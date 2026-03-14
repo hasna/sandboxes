@@ -144,6 +144,27 @@ CREATE INDEX IF NOT EXISTS idx_templates_name ON templates(name);
 
 INSERT OR IGNORE INTO _migrations (id) VALUES (2);
   `,
+
+  // Migration 3: Expand agent_type to support opencode and pi
+  `
+CREATE TABLE IF NOT EXISTS sandbox_sessions_new (
+  id TEXT PRIMARY KEY,
+  sandbox_id TEXT NOT NULL REFERENCES sandboxes(id) ON DELETE CASCADE,
+  agent_name TEXT,
+  agent_type TEXT,
+  command TEXT,
+  status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed', 'killed')),
+  exit_code INTEGER,
+  started_at TEXT NOT NULL DEFAULT (datetime('now')),
+  ended_at TEXT
+);
+INSERT INTO sandbox_sessions_new SELECT * FROM sandbox_sessions;
+DROP TABLE sandbox_sessions;
+ALTER TABLE sandbox_sessions_new RENAME TO sandbox_sessions;
+CREATE INDEX IF NOT EXISTS idx_sessions_sandbox ON sandbox_sessions(sandbox_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sandbox_sessions(status);
+INSERT OR IGNORE INTO _migrations (id) VALUES (3);
+  `,
 ];
 
 let db: Database | null = null;

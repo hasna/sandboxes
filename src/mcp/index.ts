@@ -63,6 +63,7 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "list_templates", description: "List all sandbox templates" },
   { name: "get_template", description: "Get a sandbox template by ID" },
   { name: "delete_template", description: "Delete a sandbox template" },
+  { name: "get_sandbox_status", description: "Get running processes, disk usage and uptime in a sandbox" },
 ];
 
 // ── Server ───────────────────────────────────────────────────────────
@@ -502,7 +503,7 @@ server.tool(
   "Run an AI agent inside a sandbox",
   {
     sandbox_id: z.string().describe("Sandbox ID"),
-    agent_type: z.enum(["claude", "codex", "gemini", "custom"]).describe("Agent type"),
+    agent_type: z.enum(["claude", "codex", "gemini", "opencode", "pi", "custom"]).describe("Agent type"),
     prompt: z.string().describe("Prompt for the agent"),
     agent_name: z.string().optional().describe("Agent name"),
     command: z.string().optional().describe("Custom command (for 'custom' type)"),
@@ -661,6 +662,52 @@ server.tool(
       deleteTemplate(params.id);
       return ok({ deleted: params.id });
     } catch (e) { return err(e); }
+  },
+);
+
+// 27. get_sandbox_status
+server.tool(
+  "get_sandbox_status",
+  "Get running processes, disk usage and uptime in a sandbox",
+  {
+    sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.sandbox_id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+
+      // Run status commands concurrently
+      const [psResult, dfResult, uptimeResult] = (await Promise.all([
+        provider.exec(sandbox.provider_sandbox_id, "ps aux --no-headers 2>/dev/null | head -30 || ps aux 2>/dev/null | tail -n +2 | head -30"),
+        provider.exec(sandbox.provider_sandbox_id, "df -h / 2>/dev/null || df -h 2>/dev/null | head -5"),
+        provider.exec(sandbox.provider_sandbox_id, "uptime 2>/dev/null || echo unknown"),
+      ])) as ExecResult[];
+
+      // Parse ps output into structured list
+      const processes = ((psResult as ExecResult).stdout || "").trim().split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.trim().split(/\s+/);
+          return {
+            pid: parts[1] || "",
+            cpu: parts[2] || "0",
+            mem: parts[3] || "0",
+            command: parts.slice(10).join(" ") || parts.slice(4).join(" "),
+          };
+        });
+
+      return ok({
+        sandbox_id: sandbox.id,
+        status: sandbox.status,
+        processes,
+        disk: ((dfResult as ExecResult).stdout || "").trim(),
+        uptime: ((uptimeResult as ExecResult).stdout || "").trim(),
+      });
+    } catch (e) {
+      return err(e);
+    }
   },
 );
 

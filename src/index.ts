@@ -20,3 +20,7 @@ export type { SandboxProvider, ProviderSandbox, CreateSandboxOpts, ExecOptions }
 
 // Stream
 export { createStreamCollector, addStreamListener, emitLifecycleEvent } from "./lib/stream.js";
+
+// Agent drivers
+export { getAgentDriver, listAgentDrivers } from "./lib/agents/index.js";
+export type { AgentDriver } from "./lib/agents/types.js";

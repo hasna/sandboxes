@@ -2,19 +2,8 @@ import { getSandbox } from "../db/sandboxes.js";
 import { createSession, endSession } from "../db/sessions.js";
 import { getProvider } from "../providers/index.js";
 import { createStreamCollector, emitLifecycleEvent } from "./stream.js";
+import { getAgentDriver } from "./agents/index.js";
 import type { AgentType, SandboxSession, ExecResult } from "../types/index.js";
-
-// Onboarding config written before first claude run to prevent interactive hang.
-const CLAUDE_ONBOARDING_SETUP =
-  `mkdir -p ~/.claude && ` +
-  `echo '{"hasCompletedOnboarding":true,"hasTrustDialogAccepted":true,"hasAcknowledgedCostThreshold":true}' > ~/.claude.json`;
-
-const AGENT_COMMANDS: Record<string, (prompt: string) => string> = {
-  claude: (prompt) =>
-    `${CLAUDE_ONBOARDING_SETUP} && claude --dangerously-skip-permissions -p ${JSON.stringify(prompt)}`,
-  codex: (prompt) => `codex -q ${JSON.stringify(prompt)}`,
-  gemini: (prompt) => `gemini -p ${JSON.stringify(prompt)}`,
-};
 
 export interface RunAgentOpts {
   agentType: AgentType;
@@ -34,10 +23,25 @@ export async function runAgent(
     throw new Error("Sandbox has no provider instance");
   }
 
-  const cmd =
-    opts.command ||
-    AGENT_COMMANDS[opts.agentType]?.(opts.prompt) ||
-    opts.prompt;
+  const provider = await getProvider(sandbox.provider);
+  const env = Object.keys(sandbox.env_vars ?? {}).length > 0 ? sandbox.env_vars : undefined;
+
+  // Resolve command via driver or custom override
+  let cmd: string;
+  const driver = opts.agentType !== "custom" ? getAgentDriver(opts.agentType) : undefined;
+
+  if (opts.command) {
+    // Explicit command override always wins
+    cmd = opts.command;
+  } else if (driver) {
+    // Driver: install + configure + build command
+    await driver.install(provider, sandbox.provider_sandbox_id);
+    await driver.configure(provider, sandbox.provider_sandbox_id, sandbox.env_vars ?? {});
+    cmd = driver.buildCommand(opts.prompt);
+  } else {
+    // No driver (custom or unknown) — use prompt as raw command
+    cmd = opts.prompt;
+  }
 
   const session = createSession({
     sandbox_id: sandbox.id,
@@ -52,11 +56,8 @@ export async function runAgent(
   );
 
   const collector = createStreamCollector(sandbox.id, session.id);
-  const provider = await getProvider(sandbox.provider);
-  const env = Object.keys(sandbox.env_vars ?? {}).length > 0 ? sandbox.env_vars : undefined;
 
-  // Run without background:true so E2B fires onStdout/onStderr callbacks,
-  // but detach the promise so runAgent returns the session immediately.
+  // Run without background:true so E2B fires callbacks, but detach so we return immediately
   provider.exec(sandbox.provider_sandbox_id, cmd, {
     onStdout: (data) => {
       collector.onStdout(data);
@@ -84,12 +85,9 @@ export async function stopAgent(sandboxId: string): Promise<void> {
   const sandbox = getSandbox(sandboxId);
   if (!sandbox.provider_sandbox_id) return;
 
-  // Stop all running sessions by stopping the sandbox commands
-  // The provider's stop will kill all running processes
   const provider = await getProvider(sandbox.provider);
   try {
-    // Execute kill command to stop any running agent processes
-    await provider.exec(sandbox.provider_sandbox_id, "pkill -f 'claude\\|codex\\|gemini' || true");
+    await provider.exec(sandbox.provider_sandbox_id, "pkill -f 'claude\\|codex\\|gemini\\|opencode\\|pi' || true");
   } catch {
     // Best effort
   }
