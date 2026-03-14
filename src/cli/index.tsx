@@ -629,7 +629,7 @@ program
       for (const target of targets) {
         switch (target) {
           case "claude": {
-            const cmd = `claude mcp add --transport stdio --scope user sandboxes -- bunx @hasna/sandboxes sandboxes-mcp`;
+            const cmd = `claude mcp add --transport stdio --scope user sandboxes -- bunx --bun --package @hasna/sandboxes sandboxes-mcp`;
             console.log(chalk.dim(`Running: ${cmd}`));
             execSync(cmd, { stdio: "inherit" });
             console.log(chalk.green("Installed MCP server for Claude Code."));
@@ -640,7 +640,7 @@ program
             console.log();
             console.log(`[mcp_servers.sandboxes]`);
             console.log(`command = "bunx"`);
-            console.log(`args = ["@hasna/sandboxes", "sandboxes-mcp"]`);
+            console.log(`args = ["--bun", "--package", "@hasna/sandboxes", "sandboxes-mcp"]`);
             break;
           }
           case "gemini": {
@@ -650,7 +650,7 @@ program
               mcpServers: {
                 sandboxes: {
                   command: "bunx",
-                  args: ["@hasna/sandboxes", "sandboxes-mcp"],
+                  args: ["--bun", "--package", "@hasna/sandboxes", "sandboxes-mcp"],
                 },
               },
             }, null, 2));
