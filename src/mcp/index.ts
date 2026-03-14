@@ -235,16 +235,29 @@ server.tool(
 
       const collector = createStreamCollector(sandbox.id, session.id);
       const provider = await getProvider(sandbox.provider);
-
-      const result = await provider.exec(sandbox.provider_sandbox_id, params.command, {
-        background: params.background,
-        onStdout: collector.onStdout,
-        onStderr: collector.onStderr,
-      });
+      const env = Object.keys(sandbox.env_vars ?? {}).length > 0 ? sandbox.env_vars : undefined;
 
       if (params.background) {
+        // Run without background:true so E2B fires onStdout/onStderr callbacks,
+        // but detach the promise so we return immediately.
+        provider.exec(sandbox.provider_sandbox_id, params.command, {
+          onStdout: collector.onStdout,
+          onStderr: collector.onStderr,
+          env,
+        }).then((res) => {
+          const r = res as ExecResult;
+          endSession(session.id, r.exit_code ?? 0);
+        }).catch(() => {
+          endSession(session.id, 1);
+        });
         return ok({ session_id: session.id, background: true });
       }
+
+      const result = await provider.exec(sandbox.provider_sandbox_id, params.command, {
+        onStdout: collector.onStdout,
+        onStderr: collector.onStderr,
+        env,
+      });
 
       const execResult = result as ExecResult;
       endSession(session.id, execResult.exit_code);
