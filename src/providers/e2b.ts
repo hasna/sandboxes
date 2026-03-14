@@ -23,6 +23,9 @@ export class E2BProvider implements SandboxProvider {
       const sandbox = await E2BSandbox.create({
         apiKey: this.apiKey,
         timeoutMs: (opts?.timeout || 3600) * 1000,
+        ...(opts?.onTimeout === 'pause' ? {
+          lifecycle: { onTimeout: 'pause', autoResume: opts?.autoResume ?? true },
+        } : {}),
       });
 
       instanceCache.set(sandbox.sandboxId, sandbox);
@@ -180,6 +183,25 @@ export class E2BProvider implements SandboxProvider {
 
   async delete(sandboxId: string): Promise<void> {
     await this.stop(sandboxId);
+  }
+
+  async pause(sandboxId: string): Promise<void> {
+    const sandbox = await this.getInstance(sandboxId);
+    try {
+      await (sandbox as any).pause();
+      instanceCache.delete(sandboxId);
+    } catch (err) {
+      throw new ProviderError('e2b', `Failed to pause sandbox: ${(err as Error).message}`);
+    }
+  }
+
+  async resume(sandboxId: string): Promise<void> {
+    try {
+      const sandbox = await E2BSandbox.connect(sandboxId, { apiKey: this.apiKey });
+      instanceCache.set(sandboxId, sandbox);
+    } catch (err) {
+      throw new ProviderError('e2b', `Failed to resume sandbox: ${(err as Error).message}`);
+    }
   }
 
   async keepAlive(sandboxId: string, durationMs?: number): Promise<void> {

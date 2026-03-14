@@ -235,6 +235,14 @@ export class DaytonaProvider implements SandboxProvider {
     }
   }
 
+  async pause(_sandboxId: string): Promise<void> {
+    throw new ProviderError('daytona', 'Pause/resume not supported by Daytona provider');
+  }
+
+  async resume(_sandboxId: string): Promise<void> {
+    throw new ProviderError('daytona', 'Pause/resume not supported by Daytona provider');
+  }
+
   async keepAlive(sandboxId: string, durationMs?: number): Promise<void> {
     const sandbox = await this.getInstance(sandboxId);
     try {

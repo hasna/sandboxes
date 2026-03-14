@@ -17,6 +17,7 @@ import {
   listProjects,
   ensureProject,
 } from "../db/projects.js";
+import { createTemplate, getTemplate, listTemplates, deleteTemplate } from "../db/templates.js";
 import { getProvider } from "../providers/index.js";
 import { getDefaultProvider, getDefaultTimeout } from "../lib/config.js";
 import { createStreamCollector, emitLifecycleEvent } from "../lib/stream.js";
@@ -56,6 +57,12 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "list_projects", description: "List all projects" },
   { name: "describe_tools", description: "List all available tools" },
   { name: "search_tools", description: "Search tools by keyword" },
+  { name: "pause_sandbox", description: "Pause a running sandbox, saving its state for later resume" },
+  { name: "resume_sandbox", description: "Resume a paused sandbox" },
+  { name: "create_template", description: "Create a reusable sandbox template" },
+  { name: "list_templates", description: "List all sandbox templates" },
+  { name: "get_template", description: "Get a sandbox template by ID" },
+  { name: "delete_template", description: "Delete a sandbox template" },
 ];
 
 // ── Server ───────────────────────────────────────────────────────────
@@ -75,25 +82,45 @@ server.tool(
     timeout: z.number().optional().describe("Timeout in seconds"),
     name: z.string().optional().describe("Sandbox name"),
     env_vars: z.record(z.string()).optional().describe("Environment variables"),
+    template_id: z.string().optional().describe("Template ID to base this sandbox on"),
+    on_timeout: z.enum(['pause', 'terminate']).optional().describe("What to do on timeout: pause (saves state) or terminate"),
+    auto_resume: z.boolean().optional().describe("Auto-resume paused sandbox on next connect"),
   },
   async (params) => {
     try {
       const providerName = (params.provider ?? getDefaultProvider()) as "e2b" | "daytona" | "modal";
       const timeout = params.timeout ?? getDefaultTimeout();
 
+      // Load template if specified
+      let templateData: { image?: string; env_vars?: Record<string, string>; setup_script?: string | null } = {};
+      if (params.template_id) {
+        const tmpl = getTemplate(params.template_id);
+        templateData = { image: tmpl.image ?? undefined, env_vars: tmpl.env_vars, setup_script: tmpl.setup_script };
+      }
+
+      const image = params.image ?? templateData.image;
+      const envVars = { ...templateData.env_vars, ...params.env_vars };
+      const onTimeout = params.on_timeout ?? 'terminate';
+      const autoResume = params.auto_resume ?? false;
+
       const sandbox = createSandbox({
         provider: providerName,
-        image: params.image,
+        image,
         timeout,
         name: params.name,
-        env_vars: params.env_vars,
+        env_vars: envVars,
+        on_timeout: onTimeout,
+        auto_resume: autoResume,
+        template_id: params.template_id,
       });
 
       const provider = await getProvider(providerName);
       const result = await provider.create({
-        image: params.image,
+        image,
         timeout,
-        envVars: params.env_vars,
+        envVars,
+        onTimeout,
+        autoResume,
       });
 
       const updated = updateSandbox(sandbox.id, {
@@ -102,6 +129,16 @@ server.tool(
       });
 
       emitLifecycleEvent(sandbox.id, "sandbox created");
+
+      // Run setup script if template provided one
+      if (templateData.setup_script && result.id) {
+        try {
+          await provider.exec(result.id, templateData.setup_script);
+        } catch {
+          // Non-fatal — sandbox is running, setup script failed
+        }
+      }
+
       return ok(updated);
     } catch (e) {
       return err(e);
@@ -530,6 +567,100 @@ server.tool(
     } catch (e) {
       return err(e);
     }
+  },
+);
+
+// 21. pause_sandbox
+server.tool(
+  "pause_sandbox",
+  "Pause a running sandbox, saving its state for later resume",
+  {
+    id: z.string().describe("Sandbox ID or partial ID"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+      await provider.pause(sandbox.provider_sandbox_id);
+      const updated = updateSandbox(sandbox.id, { status: "paused" });
+      emitLifecycleEvent(sandbox.id, "sandbox paused");
+      return ok(updated);
+    } catch (e) { return err(e); }
+  },
+);
+
+// 22. resume_sandbox
+server.tool(
+  "resume_sandbox",
+  "Resume a paused sandbox",
+  {
+    id: z.string().describe("Sandbox ID or partial ID"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+      await provider.resume(sandbox.provider_sandbox_id);
+      const updated = updateSandbox(sandbox.id, { status: "running" });
+      emitLifecycleEvent(sandbox.id, "sandbox resumed");
+      return ok(updated);
+    } catch (e) { return err(e); }
+  },
+);
+
+// 23. create_template
+server.tool(
+  "create_template",
+  "Create a reusable sandbox template",
+  {
+    name: z.string().describe("Template name"),
+    description: z.string().optional(),
+    image: z.string().optional().describe("Container image"),
+    env_vars: z.record(z.string()).optional().describe("Environment variables"),
+    setup_script: z.string().optional().describe("Shell script to run on sandbox creation"),
+    tags: z.array(z.string()).optional(),
+  },
+  async (params) => {
+    try { return ok(createTemplate(params)); } catch (e) { return err(e); }
+  },
+);
+
+// 24. list_templates
+server.tool(
+  "list_templates",
+  "List all sandbox templates",
+  {},
+  async () => {
+    try { return ok(listTemplates()); } catch (e) { return err(e); }
+  },
+);
+
+// 25. get_template
+server.tool(
+  "get_template",
+  "Get a sandbox template by ID",
+  {
+    id: z.string().describe("Template ID or partial ID"),
+  },
+  async (params) => {
+    try { return ok(getTemplate(params.id)); } catch (e) { return err(e); }
+  },
+);
+
+// 26. delete_template
+server.tool(
+  "delete_template",
+  "Delete a sandbox template",
+  {
+    id: z.string().describe("Template ID or partial ID"),
+  },
+  async (params) => {
+    try {
+      deleteTemplate(params.id);
+      return ok({ deleted: params.id });
+    } catch (e) { return err(e); }
   },
 );
 

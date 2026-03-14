@@ -282,6 +282,14 @@ export class ModalProvider implements SandboxProvider {
     await this.stop(sandboxId);
   }
 
+  async pause(_sandboxId: string): Promise<void> {
+    throw new ProviderError('modal', 'Pause/resume not supported by Modal provider');
+  }
+
+  async resume(_sandboxId: string): Promise<void> {
+    throw new ProviderError('modal', 'Pause/resume not supported by Modal provider');
+  }
+
   async keepAlive(_sandboxId: string, _durationMs?: number): Promise<void> {
     // Modal sandboxes have their own timeout set at creation time.
     // No explicit keep-alive mechanism needed — this is a no-op.

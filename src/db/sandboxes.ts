@@ -23,6 +23,8 @@ export function rowToSandbox(row: SandboxRow): Sandbox {
     env_vars: JSON.parse(row.env_vars),
     keep_alive_until: row.keep_alive_until,
     project_id: row.project_id,
+    on_timeout: (row.on_timeout as 'pause' | 'terminate') ?? 'terminate',
+    auto_resume: row.auto_resume === 1,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -42,10 +44,12 @@ export function createSandbox(input: CreateSandboxInput): Sandbox {
   const config = JSON.stringify(input.config ?? {});
   const env_vars = JSON.stringify(input.env_vars ?? {});
   const project_id = input.project_id ?? null;
+  const on_timeout = input.on_timeout ?? 'terminate';
+  const auto_resume = input.auto_resume ? 1 : 0;
 
   db.query(
-    `INSERT INTO sandboxes (id, provider, name, status, image, timeout, config, env_vars, project_id, created_at, updated_at)
-     VALUES (?, ?, ?, 'creating', ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO sandboxes (id, provider, name, status, image, timeout, config, env_vars, project_id, on_timeout, auto_resume, created_at, updated_at)
+     VALUES (?, ?, ?, 'creating', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     provider,
@@ -55,6 +59,8 @@ export function createSandbox(input: CreateSandboxInput): Sandbox {
     config,
     env_vars,
     project_id,
+    on_timeout,
+    auto_resume,
     timestamp,
     timestamp
   );

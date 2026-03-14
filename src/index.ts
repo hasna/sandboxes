@@ -9,6 +9,7 @@ export { addEvent, listEvents } from "./db/events.js";
 export { registerAgent, getAgent, getAgentByName, listAgents, deleteAgent } from "./db/agents.js";
 export { createProject, getProject, getProjectByPath, listProjects, ensureProject, deleteProject } from "./db/projects.js";
 export { createWebhook, getWebhook, listWebhooks, deleteWebhook } from "./db/webhooks.js";
+export { createTemplate, getTemplate, getTemplateByName, listTemplates, deleteTemplate } from "./db/templates.js";
 
 // Config
 export { loadConfig, saveConfig, getDefaultProvider, getDefaultTimeout, getDefaultImage, getProviderApiKey, setConfigValue, getConfigValue } from "./lib/config.js";

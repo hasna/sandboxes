@@ -123,6 +123,27 @@ const MIGRATIONS = [
 
   INSERT OR IGNORE INTO _migrations (id) VALUES (1);
   `,
+
+  // Migration 2: Add templates table and sandbox pause/resume columns
+  `
+ALTER TABLE sandboxes ADD COLUMN on_timeout TEXT NOT NULL DEFAULT 'terminate' CHECK(on_timeout IN ('pause', 'terminate'));
+ALTER TABLE sandboxes ADD COLUMN auto_resume INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  image TEXT,
+  env_vars TEXT NOT NULL DEFAULT '{}',
+  setup_script TEXT,
+  tags TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_templates_name ON templates(name);
+
+INSERT OR IGNORE INTO _migrations (id) VALUES (2);
+  `,
 ];
 
 let db: Database | null = null;

@@ -4,6 +4,8 @@ export interface CreateSandboxOpts {
   image?: string;
   timeout?: number;
   envVars?: Record<string, string>;
+  onTimeout?: 'pause' | 'terminate';
+  autoResume?: boolean;
 }
 
 export interface ExecOptions {
@@ -38,4 +40,7 @@ export interface SandboxProvider {
   stop(sandboxId: string): Promise<void>;
   delete(sandboxId: string): Promise<void>;
   keepAlive(sandboxId: string, durationMs?: number): Promise<void>;
+
+  pause(sandboxId: string): Promise<void>;
+  resume(sandboxId: string): Promise<void>;
 }

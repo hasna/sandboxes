@@ -46,6 +46,8 @@ export interface Sandbox {
   env_vars: Record<string, string>;
   keep_alive_until: string | null;
   project_id: string | null;
+  on_timeout: 'pause' | 'terminate';
+  auto_resume: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +64,8 @@ export interface SandboxRow {
   env_vars: string;
   keep_alive_until: string | null;
   project_id: string | null;
+  on_timeout: string;
+  auto_resume: number;
   created_at: string;
   updated_at: string;
 }
@@ -74,6 +78,9 @@ export interface CreateSandboxInput {
   env_vars?: Record<string, string>;
   config?: Record<string, unknown>;
   project_id?: string;
+  on_timeout?: 'pause' | 'terminate';
+  auto_resume?: boolean;
+  template_id?: string;
 }
 
 // ── Session ────────────────────────────────────────────────────────────
@@ -274,4 +281,46 @@ export class WebhookNotFoundError extends Error {
     super(`Webhook not found: ${id}`);
     this.name = "WebhookNotFoundError";
   }
+}
+
+export class TemplateNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Template not found: ${id}`);
+    this.name = "TemplateNotFoundError";
+  }
+}
+
+// ── Template ───────────────────────────────────────────────────────────
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  env_vars: Record<string, string>;
+  setup_script: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TemplateRow {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  env_vars: string;
+  setup_script: string | null;
+  tags: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTemplateInput {
+  name: string;
+  description?: string;
+  image?: string;
+  env_vars?: Record<string, string>;
+  setup_script?: string;
+  tags?: string[];
 }
