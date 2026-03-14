@@ -31,8 +31,12 @@ export async function getProvider(
       break;
     }
     case "modal": {
-      const { ModalProvider } = await import("./modal.js");
-      provider = new ModalProvider(key);
+      try {
+        const { ModalProvider } = await import("./modal.js");
+        provider = new ModalProvider(key);
+      } catch {
+        throw new ProviderError("modal", "Modal SDK not available. Install it with: bun add modal");
+      }
       break;
     }
     default:

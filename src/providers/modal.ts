@@ -1,4 +1,3 @@
-import { ModalClient } from "modal";
 import { ProviderError } from "../types/index.js";
 import type { ExecResult, ExecHandle, FileInfo } from "../types/index.js";
 import type {
@@ -9,29 +8,44 @@ import type {
 } from "./types.js";
 
 // Cache sandbox instances by their ID
-const sandboxCache = new Map<string, any>();
+const sandboxCache = new Map<string, unknown>();
 
 export class ModalProvider implements SandboxProvider {
   readonly name = "modal";
-  private client: ModalClient;
+  private client: unknown;
+  private _initialized = false;
+  private _apiKey?: string;
 
   constructor(apiKey?: string) {
-    // ModalClient picks up MODAL_TOKEN_ID / MODAL_TOKEN_SECRET from env by default.
-    // If an explicit apiKey is provided, set it in the environment so the client finds it.
-    if (apiKey) {
-      process.env.MODAL_TOKEN_SECRET = apiKey;
+    this._apiKey = apiKey;
+  }
+
+  private async ensureClient(): Promise<unknown> {
+    if (this._initialized) return this.client;
+    try {
+      const mod = await import("modal");
+      const ModalClient = mod.ModalClient || mod.default?.ModalClient;
+      if (!ModalClient) throw new Error("ModalClient not found in modal package");
+      if (this._apiKey) {
+        process.env["MODAL_TOKEN_SECRET"] = this._apiKey;
+      }
+      this.client = new ModalClient();
+      this._initialized = true;
+      return this.client;
+    } catch (err) {
+      throw new ProviderError("modal", `Modal SDK not available. Install with: bun add modal. Error: ${(err as Error).message}`);
     }
-    this.client = new ModalClient();
   }
 
   async create(opts?: CreateSandboxOpts): Promise<ProviderSandbox> {
     try {
-      const app = await (this.client as any).apps.fromName("open-sandboxes", {
+      const client = await this.ensureClient() as Record<string, any>;
+      const app = await client.apps.fromName("open-sandboxes", {
         createIfMissing: true,
       });
 
       const imageName = opts?.image || "ubuntu:22.04";
-      const image = (this.client as any).images.fromRegistry(imageName);
+      const image = client.images.fromRegistry(imageName);
 
       const timeout = opts?.timeout || 3600;
 
@@ -40,7 +54,7 @@ export class ModalProvider implements SandboxProvider {
         createOpts.envVars = opts.envVars;
       }
 
-      const sandbox = await (this.client as any).sandboxes.create(
+      const sandbox = await client.sandboxes.create(
         app,
         image,
         createOpts
@@ -61,7 +75,7 @@ export class ModalProvider implements SandboxProvider {
     }
   }
 
-  private getSandbox(sandboxId: string): any {
+  private getSandbox(sandboxId: string): Record<string, any> {
     const cached = sandboxCache.get(sandboxId);
     if (!cached) {
       throw new ProviderError(

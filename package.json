@@ -1,14 +1,26 @@
 {
   "name": "@hasna/sandboxes",
-  "version": "0.1.0",
-  "description": "Universal cloud sandbox manager for AI coding agents - supports e2b, Daytona, Modal",
-  "type": "module",
+  "version": "0.1.2",
+  "author": "Andrei Hasna <andrei@hasna.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hasna/sandboxes.git"
+  },
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "sandboxes": "dist/cli/index.js",
-    "sandboxes-mcp": "dist/mcp/index.js",
-    "sandboxes-serve": "dist/server/index.js"
+  "dependencies": {
+    "@daytonaio/sdk": "^0.18.0",
+    "@e2b/code-interpreter": "^1.5.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "ink": "^5.2.0",
+    "react": "^18.3.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.4",
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.3"
   },
   "exports": {
     ".": {
@@ -16,19 +28,24 @@
       "import": "./dist/index.js"
     }
   },
+  "bin": {
+    "sandboxes": "dist/cli/index.js",
+    "sandboxes-mcp": "dist/mcp/index.js",
+    "sandboxes-serve": "dist/server/index.js"
+  },
+  "bugs": {
+    "url": "https://github.com/hasna/sandboxes/issues"
+  },
+  "description": "Universal cloud sandbox manager for AI coding agents - supports e2b, Daytona, Modal",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "files": [
     "dist",
     "LICENSE",
     "README.md"
   ],
-  "scripts": {
-    "build": "bun build src/cli/index.tsx --outdir dist/cli --target bun --external ink --external react --external chalk --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/mcp/index.ts --outdir dist/mcp --target bun --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/server/index.ts --outdir dist/server --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/index.ts --outdir dist --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && tsc --emitDeclarationOnly --outDir dist",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "dev:cli": "bun run src/cli/index.tsx",
-    "dev:mcp": "bun run src/mcp/index.ts",
-    "dev:serve": "bun run src/server/index.ts"
-  },
+  "homepage": "https://github.com/hasna/sandboxes",
   "keywords": [
     "sandbox",
     "cloud",
@@ -43,36 +60,18 @@
     "gemini",
     "cli"
   ],
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/hasna/sandboxes.git"
+  "scripts": {
+    "build": "bun build src/cli/index.tsx --outdir dist/cli --target bun --external ink --external react --external chalk --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/mcp/index.ts --outdir dist/mcp --target bun --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/server/index.ts --outdir dist/server --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/index.ts --outdir dist --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && tsc --emitDeclarationOnly --outDir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "dev:cli": "bun run src/cli/index.tsx",
+    "dev:mcp": "bun run src/mcp/index.ts",
+    "dev:serve": "bun run src/server/index.ts"
   },
-  "homepage": "https://github.com/hasna/sandboxes",
-  "bugs": {
-    "url": "https://github.com/hasna/sandboxes/issues"
-  },
-  "engines": {
-    "bun": ">=1.0.0"
-  },
-  "author": "Andrei Hasna <andrei@hasna.com>",
-  "license": "Apache-2.0",
-  "dependencies": {
-    "@daytonaio/sdk": "^0.18.0",
-    "@e2b/code-interpreter": "^1.5.0",
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "chalk": "^5.4.1",
-    "commander": "^13.1.0",
-    "ink": "^5.2.0",
-    "modal": "^0.2.0",
-    "react": "^18.3.1",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@types/bun": "^1.2.4",
-    "@types/react": "^18.3.18",
-    "typescript": "^5.7.3"
-  }
+  "type": "module",
+  "types": "dist/index.d.ts"
 }
