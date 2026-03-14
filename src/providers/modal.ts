@@ -282,6 +282,10 @@ export class ModalProvider implements SandboxProvider {
     await this.stop(sandboxId);
   }
 
+  async getPublicUrl(_sandboxId: string, _port: number, _protocol?: string): Promise<string> {
+    throw new ProviderError('modal', 'Port forwarding not supported by Modal provider');
+  }
+
   async pause(_sandboxId: string): Promise<void> {
     throw new ProviderError('modal', 'Pause/resume not supported by Modal provider');
   }

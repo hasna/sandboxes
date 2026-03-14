@@ -43,4 +43,6 @@ export interface SandboxProvider {
 
   pause(sandboxId: string): Promise<void>;
   resume(sandboxId: string): Promise<void>;
+
+  getPublicUrl(sandboxId: string, port: number, protocol?: string): Promise<string>;
 }

@@ -10,6 +10,9 @@ export { registerAgent, getAgent, getAgentByName, listAgents, deleteAgent } from
 export { createProject, getProject, getProjectByPath, listProjects, ensureProject, deleteProject } from "./db/projects.js";
 export { createWebhook, getWebhook, listWebhooks, deleteWebhook } from "./db/webhooks.js";
 export { createTemplate, getTemplate, getTemplateByName, listTemplates, deleteTemplate } from "./db/templates.js";
+export { createSnapshot, getSnapshot, listSnapshots, deleteSnapshot } from "./db/snapshots.js";
+export type { Snapshot, SnapshotRow } from "./db/snapshots.js";
+export { SnapshotNotFoundError } from "./db/snapshots.js";
 
 // Config
 export { loadConfig, saveConfig, getDefaultProvider, getDefaultTimeout, getDefaultImage, getProviderApiKey, setConfigValue, getConfigValue } from "./lib/config.js";

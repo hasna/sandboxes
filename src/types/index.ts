@@ -81,6 +81,7 @@ export interface CreateSandboxInput {
   on_timeout?: 'pause' | 'terminate';
   auto_resume?: boolean;
   template_id?: string;
+  network?: 'full' | 'restricted' | 'none';
 }
 
 // ── Session ────────────────────────────────────────────────────────────

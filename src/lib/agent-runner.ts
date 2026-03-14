@@ -12,6 +12,21 @@ export interface RunAgentOpts {
   command?: string;
   onStdout?: (data: string) => void;
   onStderr?: (data: string) => void;
+  callEnvVars?: Record<string, string>;
+  webhookUrl?: string;
+  webhookEvents?: ('start' | 'complete' | 'error')[];
+}
+
+async function fireWebhook(url: string, payload: Record<string, unknown>): Promise<void> {
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Best effort — don't let webhook failure break the agent
+  }
 }
 
 export async function runAgent(
@@ -24,7 +39,8 @@ export async function runAgent(
   }
 
   const provider = await getProvider(sandbox.provider);
-  const env = Object.keys(sandbox.env_vars ?? {}).length > 0 ? sandbox.env_vars : undefined;
+  const mergedEnv = { ...sandbox.env_vars, ...opts.callEnvVars };
+  const env = Object.keys(mergedEnv).length > 0 ? mergedEnv : undefined;
 
   // Resolve command via driver or custom override
   let cmd: string;
@@ -55,6 +71,21 @@ export async function runAgent(
     `Agent ${opts.agentType} started: ${opts.prompt.slice(0, 100)}`
   );
 
+  const startedAt = Date.now();
+  const webhookEvents = opts.webhookEvents ?? ['start', 'complete', 'error'];
+
+  // Fire start webhook if configured
+  if (opts.webhookUrl && webhookEvents.includes('start')) {
+    fireWebhook(opts.webhookUrl, {
+      event: 'start',
+      session_id: session.id,
+      sandbox_id: sandbox.id,
+      agent_type: opts.agentType,
+      status: 'running',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   const collector = createStreamCollector(sandbox.id, session.id);
 
   // Run without background:true so E2B fires callbacks, but detach so we return immediately
@@ -73,9 +104,36 @@ export async function runAgent(
     const status = exitResult.exit_code === 0 ? "completed" : "failed";
     endSession(session.id, exitResult.exit_code ?? 0, status);
     emitLifecycleEvent(sandbox.id, `Agent ${opts.agentType} finished with exit code ${exitResult.exit_code}`);
+
+    // Fire complete webhook if configured
+    if (opts.webhookUrl && webhookEvents.includes('complete')) {
+      fireWebhook(opts.webhookUrl, {
+        event: 'complete',
+        session_id: session.id,
+        sandbox_id: sandbox.id,
+        agent_type: opts.agentType,
+        status,
+        exit_code: exitResult.exit_code,
+        duration_ms: Date.now() - startedAt,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }).catch((err) => {
     endSession(session.id, 1, "failed");
     emitLifecycleEvent(sandbox.id, `Agent ${opts.agentType} failed: ${(err as Error).message}`);
+
+    // Fire error webhook if configured
+    if (opts.webhookUrl && webhookEvents.includes('error')) {
+      fireWebhook(opts.webhookUrl, {
+        event: 'error',
+        session_id: session.id,
+        sandbox_id: sandbox.id,
+        agent_type: opts.agentType,
+        status: 'failed',
+        duration_ms: Date.now() - startedAt,
+        timestamp: new Date().toISOString(),
+      });
+    }
   });
 
   return session;

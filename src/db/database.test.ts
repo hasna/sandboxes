@@ -50,17 +50,22 @@ describe("migrations", () => {
       "sandbox_events",
       "sandbox_sessions",
       "sandboxes",
+      "snapshots",
+      "templates",
       "webhooks",
     ]);
   });
 
-  it("records migration 1 as applied", () => {
+  it("records all migrations as applied", () => {
     const db = getDatabase();
-    const rows = db.query("SELECT id FROM _migrations").all() as {
+    const rows = db.query("SELECT id FROM _migrations ORDER BY id").all() as {
       id: number;
     }[];
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(4);
     expect(rows[0]!.id).toBe(1);
+    expect(rows[1]!.id).toBe(2);
+    expect(rows[2]!.id).toBe(3);
+    expect(rows[3]!.id).toBe(4);
   });
 
   it("is idempotent when called multiple times", () => {

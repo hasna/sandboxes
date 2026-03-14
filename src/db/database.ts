@@ -165,6 +165,20 @@ CREATE INDEX IF NOT EXISTS idx_sessions_sandbox ON sandbox_sessions(sandbox_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sandbox_sessions(status);
 INSERT OR IGNORE INTO _migrations (id) VALUES (3);
   `,
+
+  // Migration 4: Add snapshots table for filesystem snapshot/restore
+  `
+CREATE TABLE IF NOT EXISTS snapshots (
+  id TEXT PRIMARY KEY,
+  sandbox_id TEXT NOT NULL,
+  provider_sandbox_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_sandbox ON snapshots(sandbox_id);
+INSERT OR IGNORE INTO _migrations (id) VALUES (4);
+  `,
 ];
 
 let db: Database | null = null;

@@ -18,11 +18,15 @@ import {
   ensureProject,
 } from "../db/projects.js";
 import { createTemplate, getTemplate, listTemplates, deleteTemplate } from "../db/templates.js";
+import { createSnapshot, getSnapshot, listSnapshots, deleteSnapshot } from "../db/snapshots.js";
 import { getProvider } from "../providers/index.js";
 import { getDefaultProvider, getDefaultTimeout } from "../lib/config.js";
 import { createStreamCollector, emitLifecycleEvent } from "../lib/stream.js";
 import { runAgent as runAgentLib, stopAgent as stopAgentLib } from "../lib/agent-runner.js";
 import type { ExecResult, AgentType } from "../types/index.js";
+
+// In-memory registry of exposed ports: sandboxId -> Map<port, url>
+const exposedPorts = new Map<string, Map<number, string>>();
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -64,6 +68,13 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "get_template", description: "Get a sandbox template by ID" },
   { name: "delete_template", description: "Delete a sandbox template" },
   { name: "get_sandbox_status", description: "Get running processes, disk usage and uptime in a sandbox" },
+  { name: "snapshot_sandbox", description: "Capture sandbox filesystem state as a snapshot" },
+  { name: "list_snapshots", description: "List filesystem snapshots" },
+  { name: "delete_snapshot", description: "Delete a snapshot" },
+  { name: "expose_port", description: "Forward a sandbox port and get a public URL" },
+  { name: "list_exposed_ports", description: "List all forwarded ports for a sandbox" },
+  { name: "close_port", description: "Stop forwarding a sandbox port" },
+  { name: "get_network_log", description: "Get outbound network connections from a sandbox" },
 ];
 
 // ── Server ───────────────────────────────────────────────────────────
@@ -86,6 +97,8 @@ server.tool(
     template_id: z.string().optional().describe("Template ID to base this sandbox on"),
     on_timeout: z.enum(['pause', 'terminate']).optional().describe("What to do on timeout: pause (saves state) or terminate"),
     auto_resume: z.boolean().optional().describe("Auto-resume paused sandbox on next connect"),
+    snapshot_id: z.string().optional().describe("Snapshot ID to restore from"),
+    network: z.enum(['full', 'restricted', 'none']).optional().describe("Network access policy for the sandbox"),
   },
   async (params) => {
     try {
@@ -113,9 +126,23 @@ server.tool(
         on_timeout: onTimeout,
         auto_resume: autoResume,
         template_id: params.template_id,
+        config: { network: params.network ?? 'full' },
       });
 
       const provider = await getProvider(providerName);
+
+      // If restoring from snapshot, resume instead of creating
+      if (params.snapshot_id) {
+        const snapshot = getSnapshot(params.snapshot_id);
+        await provider.resume(snapshot.provider_sandbox_id);
+        const updated = updateSandbox(sandbox.id, {
+          provider_sandbox_id: snapshot.provider_sandbox_id,
+          status: 'running',
+        });
+        emitLifecycleEvent(sandbox.id, `Sandbox restored from snapshot ${snapshot.id}`);
+        return ok(updated);
+      }
+
       const result = await provider.create({
         image,
         timeout,
@@ -260,6 +287,7 @@ server.tool(
     sandbox_id: z.string().describe("Sandbox ID or partial ID"),
     command: z.string().describe("Command to execute"),
     background: z.boolean().optional().describe("Run in background"),
+    env_vars: z.record(z.string()).optional().describe("Per-call environment variables (merged with sandbox env_vars, not persisted)"),
   },
   async (params) => {
     try {
@@ -273,7 +301,8 @@ server.tool(
 
       const collector = createStreamCollector(sandbox.id, session.id);
       const provider = await getProvider(sandbox.provider);
-      const env = Object.keys(sandbox.env_vars ?? {}).length > 0 ? sandbox.env_vars : undefined;
+      const callEnv = { ...sandbox.env_vars, ...params.env_vars };
+      const env = Object.keys(callEnv).length > 0 ? callEnv : undefined;
 
       if (params.background) {
         // Run without background:true so E2B fires onStdout/onStderr callbacks,
@@ -507,6 +536,9 @@ server.tool(
     prompt: z.string().describe("Prompt for the agent"),
     agent_name: z.string().optional().describe("Agent name"),
     command: z.string().optional().describe("Custom command (for 'custom' type)"),
+    env_vars: z.record(z.string()).optional().describe("Per-call environment variables (merged with sandbox env_vars, not persisted)"),
+    webhook_url: z.string().optional().describe("URL to POST result to when agent finishes"),
+    webhook_events: z.array(z.enum(['start', 'complete', 'error'])).optional().describe("Which events to notify on (default: all)"),
   },
   async (params) => {
     try {
@@ -515,6 +547,9 @@ server.tool(
         prompt: params.prompt,
         agentName: params.agent_name,
         command: params.command,
+        callEnvVars: params.env_vars,
+        webhookUrl: params.webhook_url,
+        webhookEvents: params.webhook_events,
       });
       return ok({ session_id: session.id, status: session.status });
     } catch (e) {
@@ -548,6 +583,7 @@ server.tool(
     sandbox_id: z.string().describe("Sandbox ID"),
     session_id: z.string().optional().describe("Session ID"),
     limit: z.number().optional().describe("Max events"),
+    offset: z.number().optional().describe("Skip first N events (for incremental polling)"),
   },
   async (params) => {
     try {
@@ -555,6 +591,7 @@ server.tool(
         sandbox_id: params.sandbox_id,
         session_id: params.session_id,
         limit: params.limit || 100,
+        offset: params.offset,
       });
       const stdout = events
         .filter((e) => e.type === "stdout")
@@ -564,7 +601,7 @@ server.tool(
         .filter((e) => e.type === "stderr")
         .map((e) => e.data)
         .join("");
-      return ok({ stdout, stderr, event_count: events.length });
+      return ok({ stdout, stderr, event_count: events.length, next_offset: (params.offset ?? 0) + events.length });
     } catch (e) {
       return err(e);
     }
@@ -708,6 +745,137 @@ server.tool(
     } catch (e) {
       return err(e);
     }
+  },
+);
+
+// 28. snapshot_sandbox
+server.tool(
+  "snapshot_sandbox",
+  "Capture sandbox filesystem state as a snapshot",
+  {
+    id: z.string().describe("Sandbox ID or partial ID"),
+    name: z.string().optional().describe("Snapshot name"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+      await provider.pause(sandbox.provider_sandbox_id);
+      updateSandbox(sandbox.id, { status: 'paused' });
+      const snapshot = createSnapshot({
+        sandbox_id: sandbox.id,
+        provider_sandbox_id: sandbox.provider_sandbox_id,
+        provider: sandbox.provider,
+        name: params.name,
+      });
+      emitLifecycleEvent(sandbox.id, `Snapshot created: ${snapshot.id}`);
+      return ok(snapshot);
+    } catch (e) { return err(e); }
+  },
+);
+
+// 29. list_snapshots
+server.tool(
+  "list_snapshots",
+  "List filesystem snapshots",
+  {
+    sandbox_id: z.string().optional().describe("Filter by sandbox ID"),
+  },
+  async (params) => {
+    try { return ok(listSnapshots(params.sandbox_id)); } catch (e) { return err(e); }
+  },
+);
+
+// 30. delete_snapshot
+server.tool(
+  "delete_snapshot",
+  "Delete a snapshot",
+  {
+    id: z.string().describe("Snapshot ID or partial ID"),
+  },
+  async (params) => {
+    try {
+      deleteSnapshot(params.id);
+      return ok({ deleted: params.id });
+    } catch (e) { return err(e); }
+  },
+);
+
+// 31. expose_port
+server.tool(
+  "expose_port",
+  "Forward a sandbox port and get a public URL",
+  {
+    sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+    port: z.number().describe("Port number to expose"),
+    protocol: z.string().optional().describe("Protocol: http or ws (default: http)"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.sandbox_id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+      const url = await provider.getPublicUrl(sandbox.provider_sandbox_id, params.port, params.protocol);
+      if (!exposedPorts.has(sandbox.id)) exposedPorts.set(sandbox.id, new Map());
+      exposedPorts.get(sandbox.id)!.set(params.port, url);
+      return ok({ sandbox_id: sandbox.id, port: params.port, url });
+    } catch (e) { return err(e); }
+  },
+);
+
+// 32. list_exposed_ports
+server.tool(
+  "list_exposed_ports",
+  "List all forwarded ports for a sandbox",
+  {
+    sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.sandbox_id);
+      const ports = exposedPorts.get(sandbox.id) ?? new Map();
+      const result = Array.from(ports.entries()).map(([port, url]) => ({ port, url }));
+      return ok(result);
+    } catch (e) { return err(e); }
+  },
+);
+
+// 33. close_port
+server.tool(
+  "close_port",
+  "Stop forwarding a sandbox port",
+  {
+    sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+    port: z.number().describe("Port number to close"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.sandbox_id);
+      exposedPorts.get(sandbox.id)?.delete(params.port);
+      return ok({ sandbox_id: sandbox.id, port: params.port, closed: true });
+    } catch (e) { return err(e); }
+  },
+);
+
+// 34. get_network_log
+server.tool(
+  "get_network_log",
+  "Get outbound network connections from a sandbox",
+  {
+    sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.sandbox_id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+      const result = await provider.exec(
+        sandbox.provider_sandbox_id,
+        "ss -tnp 2>/dev/null || netstat -tnp 2>/dev/null || echo 'Network log not available'"
+      ) as ExecResult;
+      return ok({ sandbox_id: sandbox.id, connections: (result.stdout || "").trim() });
+    } catch (e) { return err(e); }
   },
 );
 

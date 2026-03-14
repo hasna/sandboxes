@@ -204,6 +204,16 @@ export class E2BProvider implements SandboxProvider {
     }
   }
 
+  async getPublicUrl(sandboxId: string, port: number, _protocol?: string): Promise<string> {
+    const sandbox = await this.getInstance(sandboxId);
+    try {
+      const host = (sandbox as any).getHost(port);
+      return `https://${host}`;
+    } catch (err) {
+      throw new ProviderError('e2b', `Failed to get public URL for port ${port}: ${(err as Error).message}`);
+    }
+  }
+
   async keepAlive(sandboxId: string, durationMs?: number): Promise<void> {
     const sandbox = await this.getInstance(sandboxId);
     try {

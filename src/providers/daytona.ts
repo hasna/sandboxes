@@ -235,6 +235,10 @@ export class DaytonaProvider implements SandboxProvider {
     }
   }
 
+  async getPublicUrl(_sandboxId: string, _port: number, _protocol?: string): Promise<string> {
+    throw new ProviderError('daytona', 'Port forwarding not supported by Daytona provider');
+  }
+
   async pause(_sandboxId: string): Promise<void> {
     throw new ProviderError('daytona', 'Pause/resume not supported by Daytona provider');
   }
