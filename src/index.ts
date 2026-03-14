@@ -17,6 +17,9 @@ export { SnapshotNotFoundError } from "./db/snapshots.js";
 // Config
 export { loadConfig, saveConfig, getDefaultProvider, getDefaultTimeout, getDefaultImage, getProviderApiKey, setConfigValue, getConfigValue } from "./lib/config.js";
 
+// Images
+export { BUILTIN_IMAGES, resolveImage, getBuiltinImageSetupScript } from "./lib/images.js";
+
 // Providers
 export { getProvider } from "./providers/index.js";
 export type { SandboxProvider, ProviderSandbox, CreateSandboxOpts, ExecOptions } from "./providers/types.js";

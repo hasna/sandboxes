@@ -61,11 +61,12 @@ describe("migrations", () => {
     const rows = db.query("SELECT id FROM _migrations ORDER BY id").all() as {
       id: number;
     }[];
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
     expect(rows[0]!.id).toBe(1);
     expect(rows[1]!.id).toBe(2);
     expect(rows[2]!.id).toBe(3);
     expect(rows[3]!.id).toBe(4);
+    expect(rows[4]!.id).toBe(5);
   });
 
   it("is idempotent when called multiple times", () => {

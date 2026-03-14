@@ -23,7 +23,22 @@ import { getProvider } from "../providers/index.js";
 import { getDefaultProvider, getDefaultTimeout } from "../lib/config.js";
 import { createStreamCollector, emitLifecycleEvent } from "../lib/stream.js";
 import { runAgent as runAgentLib, stopAgent as stopAgentLib } from "../lib/agent-runner.js";
+import { resolveImage, getBuiltinImageSetupScript, BUILTIN_IMAGES } from "../lib/images.js";
 import type { ExecResult, AgentType } from "../types/index.js";
+
+// ── Cost constants ────────────────────────────────────────────────────
+const E2B_COST_PER_SECOND = 0.000014;
+const DAYTONA_COST_PER_SECOND = 0.000010;
+
+function estimateCost(providerName: string, startedAt: string | null): { compute_seconds: number; cost_usd: number } {
+  if (!startedAt) return { compute_seconds: 0, cost_usd: 0 };
+  const seconds = (Date.now() - new Date(startedAt).getTime()) / 1000;
+  const rate = providerName === 'daytona' ? DAYTONA_COST_PER_SECOND : E2B_COST_PER_SECOND;
+  return {
+    compute_seconds: Math.round(seconds),
+    cost_usd: Math.round(seconds * rate * 1000000) / 1000000,
+  };
+}
 
 // In-memory registry of exposed ports: sandboxId -> Map<port, url>
 const exposedPorts = new Map<string, Map<number, string>>();
@@ -75,6 +90,8 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "list_exposed_ports", description: "List all forwarded ports for a sandbox" },
   { name: "close_port", description: "Stop forwarding a sandbox port" },
   { name: "get_network_log", description: "Get outbound network connections from a sandbox" },
+  { name: "watch_file", description: "Get new content from a file since a previous read (tail -f equivalent)" },
+  { name: "list_images", description: "List available pre-warmed sandbox image aliases" },
 ];
 
 // ── Server ───────────────────────────────────────────────────────────
@@ -99,6 +116,8 @@ server.tool(
     auto_resume: z.boolean().optional().describe("Auto-resume paused sandbox on next connect"),
     snapshot_id: z.string().optional().describe("Snapshot ID to restore from"),
     network: z.enum(['full', 'restricted', 'none']).optional().describe("Network access policy for the sandbox"),
+    budget_limit_usd: z.number().optional().describe("Auto-terminate sandbox if compute cost exceeds this USD amount"),
+    on_budget_exceeded: z.enum(['terminate', 'pause', 'notify']).optional().describe("Action when budget limit is reached (default: terminate)"),
   },
   async (params) => {
     try {
@@ -112,14 +131,16 @@ server.tool(
         templateData = { image: tmpl.image ?? undefined, env_vars: tmpl.env_vars, setup_script: tmpl.setup_script };
       }
 
-      const image = params.image ?? templateData.image;
+      const rawImage = params.image ?? templateData.image;
+      const resolvedImage = rawImage ? resolveImage(rawImage) : rawImage;
+      const builtinSetupScript = rawImage ? getBuiltinImageSetupScript(rawImage) : undefined;
       const envVars = { ...templateData.env_vars, ...params.env_vars };
       const onTimeout = params.on_timeout ?? 'terminate';
       const autoResume = params.auto_resume ?? false;
 
       const sandbox = createSandbox({
         provider: providerName,
-        image,
+        image: resolvedImage,
         timeout,
         name: params.name,
         env_vars: envVars,
@@ -127,6 +148,8 @@ server.tool(
         auto_resume: autoResume,
         template_id: params.template_id,
         config: { network: params.network ?? 'full' },
+        budget_limit_usd: params.budget_limit_usd,
+        on_budget_exceeded: params.on_budget_exceeded,
       });
 
       const provider = await getProvider(providerName);
@@ -144,7 +167,7 @@ server.tool(
       }
 
       const result = await provider.create({
-        image,
+        image: resolvedImage,
         timeout,
         envVars,
         onTimeout,
@@ -154,16 +177,26 @@ server.tool(
       const updated = updateSandbox(sandbox.id, {
         provider_sandbox_id: result.id,
         status: "running",
+        started_at: new Date().toISOString(),
       });
 
       emitLifecycleEvent(sandbox.id, "sandbox created");
 
-      // Run setup script if template provided one
+      // Run template setup script if provided
       if (templateData.setup_script && result.id) {
         try {
           await provider.exec(result.id, templateData.setup_script);
         } catch {
           // Non-fatal — sandbox is running, setup script failed
+        }
+      }
+
+      // Run builtin image setup script if applicable
+      if (builtinSetupScript && result.id) {
+        try {
+          await provider.exec(result.id, builtinSetupScript);
+        } catch {
+          // Non-fatal — sandbox is running, builtin setup script failed
         }
       }
 
@@ -183,7 +216,9 @@ server.tool(
   },
   async (params) => {
     try {
-      return ok(getSandbox(params.id));
+      const sandbox = getSandbox(params.id);
+      const cost = estimateCost(sandbox.provider, sandbox.started_at);
+      return ok({ ...sandbox, ...cost });
     } catch (e) {
       return err(e);
     }
@@ -200,12 +235,11 @@ server.tool(
   },
   async (params) => {
     try {
-      return ok(
-        listSandboxes({
-          status: params.status as any,
-          provider: params.provider as any,
-        }),
-      );
+      const sandboxes = listSandboxes({
+        status: params.status as any,
+        provider: params.provider as any,
+      });
+      return ok(sandboxes.map((s) => ({ ...s, ...estimateCost(s.provider, s.started_at) })));
     } catch (e) {
       return err(e);
     }
@@ -288,6 +322,8 @@ server.tool(
     command: z.string().describe("Command to execute"),
     background: z.boolean().optional().describe("Run in background"),
     env_vars: z.record(z.string()).optional().describe("Per-call environment variables (merged with sandbox env_vars, not persisted)"),
+    stdin: z.string().optional().describe("String to pipe as stdin to the command"),
+    tty: z.boolean().optional().describe("Allocate a TTY for the session (best-effort)"),
   },
   async (params) => {
     try {
@@ -311,6 +347,8 @@ server.tool(
           onStdout: collector.onStdout,
           onStderr: collector.onStderr,
           env,
+          stdin: params.stdin,
+          tty: params.tty,
         }).then((res) => {
           const r = res as ExecResult;
           endSession(session.id, r.exit_code ?? 0);
@@ -324,6 +362,8 @@ server.tool(
         onStdout: collector.onStdout,
         onStderr: collector.onStderr,
         env,
+        stdin: params.stdin,
+        tty: params.tty,
       });
 
       const execResult = result as ExecResult;
@@ -347,14 +387,21 @@ server.tool(
   {
     sandbox_id: z.string().describe("Sandbox ID or partial ID"),
     path: z.string().describe("File path"),
+    offset: z.number().optional().describe("Line or byte offset to start reading from"),
+    limit: z.number().optional().describe("Max lines or bytes to return"),
+    encoding: z.enum(['utf8', 'base64', 'hex']).optional().describe("Output encoding (default: utf8)"),
   },
   async (params) => {
     try {
       const sandbox = getSandbox(params.sandbox_id);
       if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
       const provider = await getProvider(sandbox.provider);
-      const content = await provider.readFile(sandbox.provider_sandbox_id, params.path);
-      return ok({ path: params.path, content });
+      const content = await provider.readFile(sandbox.provider_sandbox_id, params.path, {
+        encoding: params.encoding,
+        offset: params.offset,
+        limit: params.limit,
+      });
+      return ok({ path: params.path, content, encoding: params.encoding ?? 'utf8' });
     } catch (e) {
       return err(e);
     }
@@ -390,13 +437,18 @@ server.tool(
   {
     sandbox_id: z.string().describe("Sandbox ID or partial ID"),
     path: z.string().describe("Directory path"),
+    recursive: z.boolean().optional().describe("List files recursively"),
+    glob: z.string().optional().describe("Glob pattern to filter files"),
   },
   async (params) => {
     try {
       const sandbox = getSandbox(params.sandbox_id);
       if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
       const provider = await getProvider(sandbox.provider);
-      const files = await provider.listFiles(sandbox.provider_sandbox_id, params.path);
+      const files = await provider.listFiles(sandbox.provider_sandbox_id, params.path, {
+        recursive: params.recursive,
+        glob: params.glob,
+      });
       return ok(files);
     } catch (e) {
       return err(e);
@@ -875,6 +927,52 @@ server.tool(
         "ss -tnp 2>/dev/null || netstat -tnp 2>/dev/null || echo 'Network log not available'"
       ) as ExecResult;
       return ok({ sandbox_id: sandbox.id, connections: (result.stdout || "").trim() });
+    } catch (e) { return err(e); }
+  },
+);
+
+// 35. watch_file
+server.tool(
+  "watch_file",
+  "Get new content from a file since a previous read (tail -f equivalent)",
+  {
+    sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+    path: z.string().describe("File path to watch"),
+    offset: z.number().optional().describe("Line offset to read from (use next_offset from previous call)"),
+    limit: z.number().optional().describe("Max lines to return (default: 100)"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.sandbox_id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+      const content = await provider.readFile(sandbox.provider_sandbox_id, params.path, {
+        offset: params.offset,
+        limit: params.limit ?? 100,
+      });
+      const lines = content.split('\n');
+      return ok({
+        path: params.path,
+        content,
+        lines_read: lines.length,
+        next_offset: (params.offset ?? 0) + lines.length,
+      });
+    } catch (e) { return err(e); }
+  },
+);
+
+// 36. list_images
+server.tool(
+  "list_images",
+  "List available pre-warmed sandbox image aliases",
+  {},
+  async () => {
+    try {
+      return ok(Object.entries(BUILTIN_IMAGES).map(([name, info]) => ({
+        name,
+        description: info.description,
+        has_setup_script: !!info.setup_script,
+      })));
     } catch (e) { return err(e); }
   },
 );

@@ -48,6 +48,9 @@ export interface Sandbox {
   project_id: string | null;
   on_timeout: 'pause' | 'terminate';
   auto_resume: boolean;
+  budget_limit_usd: number | null;
+  on_budget_exceeded: 'terminate' | 'pause' | 'notify';
+  started_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -66,6 +69,9 @@ export interface SandboxRow {
   project_id: string | null;
   on_timeout: string;
   auto_resume: number;
+  budget_limit_usd: number | null;
+  on_budget_exceeded: string;
+  started_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,6 +88,8 @@ export interface CreateSandboxInput {
   auto_resume?: boolean;
   template_id?: string;
   network?: 'full' | 'restricted' | 'none';
+  budget_limit_usd?: number;
+  on_budget_exceeded?: 'terminate' | 'pause' | 'notify';
 }
 
 // ── Session ────────────────────────────────────────────────────────────

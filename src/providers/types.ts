@@ -15,6 +15,8 @@ export interface ExecOptions {
   timeout?: number;
   env?: Record<string, string>;
   cwd?: string;
+  stdin?: string;    // String to pipe as stdin
+  tty?: boolean;     // Allocate a TTY (best-effort)
 }
 
 export interface ProviderSandbox {
@@ -33,9 +35,9 @@ export interface SandboxProvider {
     opts?: ExecOptions
   ): Promise<ExecResult | ExecHandle>;
 
-  readFile(sandboxId: string, path: string): Promise<string>;
+  readFile(sandboxId: string, path: string, opts?: { encoding?: 'utf8' | 'base64' | 'hex'; offset?: number; limit?: number }): Promise<string>;
   writeFile(sandboxId: string, path: string, content: string): Promise<void>;
-  listFiles(sandboxId: string, path: string): Promise<FileInfo[]>;
+  listFiles(sandboxId: string, path: string, opts?: { recursive?: boolean; glob?: string }): Promise<FileInfo[]>;
 
   stop(sandboxId: string): Promise<void>;
   delete(sandboxId: string): Promise<void>;

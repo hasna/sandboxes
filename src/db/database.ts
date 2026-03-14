@@ -179,6 +179,14 @@ CREATE TABLE IF NOT EXISTS snapshots (
 CREATE INDEX IF NOT EXISTS idx_snapshots_sandbox ON snapshots(sandbox_id);
 INSERT OR IGNORE INTO _migrations (id) VALUES (4);
   `,
+
+  // Migration 5: Add budget tracking and started_at to sandboxes
+  `
+ALTER TABLE sandboxes ADD COLUMN budget_limit_usd REAL;
+ALTER TABLE sandboxes ADD COLUMN on_budget_exceeded TEXT NOT NULL DEFAULT 'terminate' CHECK(on_budget_exceeded IN ('terminate', 'pause', 'notify'));
+ALTER TABLE sandboxes ADD COLUMN started_at TEXT;
+INSERT OR IGNORE INTO _migrations (id) VALUES (5);
+  `,
 ];
 
 let db: Database | null = null;

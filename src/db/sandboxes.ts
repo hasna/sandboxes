@@ -25,6 +25,9 @@ export function rowToSandbox(row: SandboxRow): Sandbox {
     project_id: row.project_id,
     on_timeout: (row.on_timeout as 'pause' | 'terminate') ?? 'terminate',
     auto_resume: row.auto_resume === 1,
+    budget_limit_usd: row.budget_limit_usd ?? null,
+    on_budget_exceeded: (row.on_budget_exceeded as 'terminate' | 'pause' | 'notify') ?? 'terminate',
+    started_at: row.started_at ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -46,10 +49,12 @@ export function createSandbox(input: CreateSandboxInput): Sandbox {
   const project_id = input.project_id ?? null;
   const on_timeout = input.on_timeout ?? 'terminate';
   const auto_resume = input.auto_resume ? 1 : 0;
+  const budget_limit_usd = input.budget_limit_usd ?? null;
+  const on_budget_exceeded = input.on_budget_exceeded ?? 'terminate';
 
   db.query(
-    `INSERT INTO sandboxes (id, provider, name, status, image, timeout, config, env_vars, project_id, on_timeout, auto_resume, created_at, updated_at)
-     VALUES (?, ?, ?, 'creating', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO sandboxes (id, provider, name, status, image, timeout, config, env_vars, project_id, on_timeout, auto_resume, budget_limit_usd, on_budget_exceeded, created_at, updated_at)
+     VALUES (?, ?, ?, 'creating', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     provider,
@@ -61,6 +66,8 @@ export function createSandbox(input: CreateSandboxInput): Sandbox {
     project_id,
     on_timeout,
     auto_resume,
+    budget_limit_usd,
+    on_budget_exceeded,
     timestamp,
     timestamp
   );
@@ -125,6 +132,7 @@ export function updateSandbox(
       | "config"
       | "env_vars"
       | "keep_alive_until"
+      | "started_at"
     >
   >
 ): Sandbox {
@@ -167,6 +175,10 @@ export function updateSandbox(
   if (updates.keep_alive_until !== undefined) {
     setClauses.push("keep_alive_until = ?");
     params.push(updates.keep_alive_until);
+  }
+  if (updates.started_at !== undefined) {
+    setClauses.push("started_at = ?");
+    params.push(updates.started_at);
   }
 
   if (setClauses.length === 0) {

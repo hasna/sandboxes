@@ -107,10 +107,11 @@ export class E2BProvider implements SandboxProvider {
         envs: opts?.env,
         cwd: opts?.cwd,
         timeoutMs: opts?.timeout ? opts.timeout * 1000 : undefined,
-      });
+        ...(opts?.stdin !== undefined ? { stdin: opts.stdin } as Record<string, unknown> : {}),
+      } as Parameters<typeof sandbox.commands.run>[1]);
 
       return {
-        exit_code: result.exitCode,
+        exit_code: result.exitCode ?? 0,
         stdout: result.stdout,
         stderr: result.stderr,
       } satisfies ExecResult;
@@ -122,10 +123,30 @@ export class E2BProvider implements SandboxProvider {
     }
   }
 
-  async readFile(sandboxId: string, path: string): Promise<string> {
+  async readFile(sandboxId: string, path: string, opts?: { encoding?: 'utf8' | 'base64' | 'hex'; offset?: number; limit?: number }): Promise<string> {
     const sandbox = await this.getInstance(sandboxId);
     try {
-      return await sandbox.files.read(path, { format: "text" }) as string;
+      if (opts?.encoding === 'base64') {
+        const bytes = await sandbox.files.read(path, { format: 'bytes' }) as Uint8Array;
+        const sliced = (opts.offset !== undefined || opts.limit !== undefined)
+          ? bytes.slice(opts.offset ?? 0, opts.limit !== undefined ? (opts.offset ?? 0) + opts.limit : undefined)
+          : bytes;
+        return Buffer.from(sliced).toString('base64');
+      } else if (opts?.encoding === 'hex') {
+        const bytes = await sandbox.files.read(path, { format: 'bytes' }) as Uint8Array;
+        const sliced = (opts.offset !== undefined || opts.limit !== undefined)
+          ? bytes.slice(opts.offset ?? 0, opts.limit !== undefined ? (opts.offset ?? 0) + opts.limit : undefined)
+          : bytes;
+        return Buffer.from(sliced).toString('hex');
+      } else {
+        const content = await sandbox.files.read(path, { format: 'text' }) as string;
+        if (opts?.offset !== undefined || opts?.limit !== undefined) {
+          const lines = content.split('\n');
+          const sliced = lines.slice(opts.offset ?? 0, opts.limit !== undefined ? (opts.offset ?? 0) + opts.limit : undefined);
+          return sliced.join('\n');
+        }
+        return content;
+      }
     } catch (err) {
       throw new ProviderError(
         "e2b",
@@ -150,9 +171,22 @@ export class E2BProvider implements SandboxProvider {
     }
   }
 
-  async listFiles(sandboxId: string, path: string): Promise<FileInfo[]> {
+  async listFiles(sandboxId: string, path: string, opts?: { recursive?: boolean; glob?: string }): Promise<FileInfo[]> {
     const sandbox = await this.getInstance(sandboxId);
     try {
+      if (opts?.recursive || opts?.glob) {
+        const pattern = opts.glob ? opts.glob : '*';
+        const cmd = opts.recursive
+          ? `find ${JSON.stringify(path)} -name ${JSON.stringify(pattern)} 2>/dev/null | head -500`
+          : `ls -la ${JSON.stringify(path)}/${pattern} 2>/dev/null`;
+        const result = await sandbox.commands.run(cmd);
+        return result.stdout.trim().split('\n').filter(Boolean).map((p) => ({
+          path: p.trim(),
+          name: p.trim().split('/').pop() || p.trim(),
+          is_dir: false,
+          size: 0,
+        }));
+      }
       const entries = await sandbox.files.list(path);
       return entries.map((e) => ({
         path: e.path,
