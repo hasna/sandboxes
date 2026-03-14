@@ -10,7 +10,7 @@ import {
   updateSandbox,
   deleteSandbox as deleteSandboxDb,
 } from "../db/sandboxes.js";
-import { createSession, endSession } from "../db/sessions.js";
+import { createSession } from "../db/sessions.js";
 import { listEvents } from "../db/events.js";
 import { registerAgent, listAgents } from "../db/agents.js";
 import {
@@ -23,7 +23,13 @@ import { getProvider } from "../providers/index.js";
 import { getDefaultProvider, getDefaultTimeout } from "../lib/config.js";
 import { createStreamCollector, emitLifecycleEvent } from "../lib/stream.js";
 import { runAgent as runAgentLib, stopAgent as stopAgentLib } from "../lib/agent-runner.js";
+import {
+  finalizeSandboxProvisionFailure,
+  finalizeSessionExit,
+  finalizeSessionFailure,
+} from "../lib/runtime-state.js";
 import { resolveImage, getBuiltinImageSetupScript, BUILTIN_IMAGES } from "../lib/images.js";
+import { getPackageVersion } from "../lib/version.js";
 import type { ExecResult, AgentType } from "../types/index.js";
 
 // ── Cost constants ────────────────────────────────────────────────────
@@ -98,7 +104,7 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
 
 const server = new McpServer({
   name: "sandboxes",
-  version: "0.1.0",
+  version: getPackageVersion(),
 });
 
 // 1. create_sandbox
@@ -120,6 +126,7 @@ server.tool(
     on_budget_exceeded: z.enum(['terminate', 'pause', 'notify']).optional().describe("Action when budget limit is reached (default: terminate)"),
   },
   async (params) => {
+    let sandboxId: string | undefined;
     try {
       const providerName = (params.provider ?? getDefaultProvider()) as "e2b" | "daytona" | "modal";
       const timeout = params.timeout ?? getDefaultTimeout();
@@ -151,6 +158,7 @@ server.tool(
         budget_limit_usd: params.budget_limit_usd,
         on_budget_exceeded: params.on_budget_exceeded,
       });
+      sandboxId = sandbox.id;
 
       const provider = await getProvider(providerName);
 
@@ -202,6 +210,9 @@ server.tool(
 
       return ok(updated);
     } catch (e) {
+      if (sandboxId) {
+        finalizeSandboxProvisionFailure(sandboxId, e);
+      }
       return err(e);
     }
   },
@@ -326,6 +337,7 @@ server.tool(
     tty: z.boolean().optional().describe("Allocate a TTY for the session (best-effort)"),
   },
   async (params) => {
+    let sessionId: string | undefined;
     try {
       const sandbox = getSandbox(params.sandbox_id);
       if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
@@ -334,6 +346,7 @@ server.tool(
         sandbox_id: sandbox.id,
         command: params.command,
       });
+      sessionId = session.id;
 
       const collector = createStreamCollector(sandbox.id, session.id);
       const provider = await getProvider(sandbox.provider);
@@ -351,9 +364,9 @@ server.tool(
           tty: params.tty,
         }).then((res) => {
           const r = res as ExecResult;
-          endSession(session.id, r.exit_code ?? 0);
+          finalizeSessionExit(session.id, r.exit_code ?? 0);
         }).catch(() => {
-          endSession(session.id, 1);
+          finalizeSessionFailure(session.id);
         });
         return ok({ session_id: session.id, background: true });
       }
@@ -367,7 +380,7 @@ server.tool(
       });
 
       const execResult = result as ExecResult;
-      endSession(session.id, execResult.exit_code);
+      finalizeSessionExit(session.id, execResult.exit_code);
       return ok({
         session_id: session.id,
         exit_code: execResult.exit_code,
@@ -375,6 +388,9 @@ server.tool(
         stderr: execResult.stderr,
       });
     } catch (e) {
+      if (sessionId) {
+        finalizeSessionFailure(sessionId, e);
+      }
       return err(e);
     }
   },
@@ -522,8 +538,7 @@ server.tool(
   },
   async (params) => {
     try {
-      const project = ensureProject(params.name, params.path);
-      return ok(project);
+      return ok(ensureProject(params.name, params.path, params.description));
     } catch (e) {
       return err(e);
     }

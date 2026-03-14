@@ -97,6 +97,11 @@ describe("ensureProject", () => {
     expect(second.id).toBe(first.id);
     expect(second.name).toBe("existing"); // keeps original name
   });
+
+  it("preserves description when creating through ensureProject", () => {
+    const project = ensureProject("described", "/tmp/described", "Important repo");
+    expect(project.description).toBe("Important repo");
+  });
 });
 
 describe("listProjects", () => {

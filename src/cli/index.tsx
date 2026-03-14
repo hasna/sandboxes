@@ -13,7 +13,6 @@ import {
 } from "../db/sandboxes.js";
 import {
   createSession,
-  endSession,
 } from "../db/sessions.js";
 import { listEvents } from "../db/events.js";
 import { registerAgent, listAgents } from "../db/agents.js";
@@ -26,6 +25,12 @@ import {
   getDefaultImage,
 } from "../lib/config.js";
 import { createStreamCollector } from "../lib/stream.js";
+import {
+  finalizeSandboxProvisionFailure,
+  finalizeSessionExit,
+  finalizeSessionFailure,
+} from "../lib/runtime-state.js";
+import { getPackageVersion } from "../lib/version.js";
 import type { SandboxProviderName } from "../types/index.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -97,7 +102,7 @@ function parseEnvVars(envArgs: string[]): Record<string, string> {
 const program = new Command()
   .name("sandboxes")
   .description("Universal cloud sandbox manager for AI coding agents")
-  .version("0.1.0");
+  .version(getPackageVersion());
 
 // ── create ───────────────────────────────────────────────────────────
 
@@ -113,6 +118,7 @@ program
     return acc;
   }, [] as string[])
   .action(async (opts) => {
+    let sandboxId: string | undefined;
     try {
       const provider = (opts.provider || getDefaultProvider()) as SandboxProviderName;
       const timeout = opts.timeout ? parseInt(opts.timeout, 10) : getDefaultTimeout();
@@ -126,6 +132,7 @@ program
         timeout,
         env_vars: envVars,
       });
+      sandboxId = sandbox.id;
 
       console.log(chalk.dim("Creating sandbox..."));
 
@@ -149,6 +156,9 @@ program
         console.log(`  ${chalk.bold("Name:")}     ${updated.name}`);
       }
     } catch (err) {
+      if (sandboxId) {
+        finalizeSandboxProvisionFailure(sandboxId, err);
+      }
       handleError(err);
     }
   });
@@ -235,6 +245,7 @@ program
   .command("exec <id> <command...>")
   .description("Execute a command in a sandbox")
   .action(async (id, commandParts) => {
+    let sessionId: string | undefined;
     try {
       const sandbox = getSandbox(id);
 
@@ -248,6 +259,7 @@ program
         sandbox_id: sandbox.id,
         command: cmd,
       });
+      sessionId = session.id;
 
       const collector = createStreamCollector(sandbox.id, session.id);
 
@@ -266,14 +278,13 @@ program
       // ExecResult (not ExecHandle) — has exit_code directly
       const execResult = "exit_code" in result ? result : await result.wait();
 
-      endSession(
-        session.id,
-        execResult.exit_code,
-        execResult.exit_code === 0 ? "completed" : "failed"
-      );
+      finalizeSessionExit(session.id, execResult.exit_code);
 
       process.exit(execResult.exit_code);
     } catch (err) {
+      if (sessionId) {
+        finalizeSessionFailure(sessionId, err);
+      }
       handleError(err);
     }
   });

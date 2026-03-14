@@ -66,11 +66,11 @@ export function listProjects(): Project[] {
   return rows.map(rowToProject);
 }
 
-export function ensureProject(name: string, path: string): Project {
+export function ensureProject(name: string, path: string, description?: string): Project {
   const existing = getProjectByPath(path);
   if (existing) return existing;
 
-  return createProject({ name, path });
+  return createProject({ name, path, description });
 }
 
 export function deleteProject(id: string): void {

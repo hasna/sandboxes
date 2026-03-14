@@ -3,6 +3,8 @@ import { resetDatabase, getDatabase, closeDatabase } from "../db/database.js";
 import { createSandbox } from "../db/sandboxes.js";
 import { registerAgent } from "../db/agents.js";
 import { ensureProject } from "../db/projects.js";
+import { handleRequest } from "./serve.js";
+import { getPackageVersion } from "../lib/version.js";
 
 beforeEach(() => {
   process.env["SANDBOXES_DB_PATH"] = ":memory:";
@@ -51,5 +53,29 @@ describe("HTTP server route logic (unit)", () => {
     expect(listSandboxes().length).toBe(1);
     deleteSandbox(sandbox.id);
     expect(listSandboxes().length).toBe(0);
+  });
+
+  it("health route reports the current package version", async () => {
+    const response = await handleRequest(new Request("http://localhost/api/health"));
+    const payload = await response.json() as { version: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.version).toBe(getPackageVersion());
+  });
+
+  it("project registration route preserves description", async () => {
+    const response = await handleRequest(new Request("http://localhost/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "described-project",
+        path: "/tmp/described-project",
+        description: "route-level description",
+      }),
+    }));
+    const payload = await response.json() as { description: string };
+
+    expect(response.status).toBe(201);
+    expect(payload.description).toBe("route-level description");
   });
 });

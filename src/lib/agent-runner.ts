@@ -1,8 +1,9 @@
 import { getSandbox } from "../db/sandboxes.js";
-import { createSession, endSession } from "../db/sessions.js";
+import { createSession } from "../db/sessions.js";
 import { getProvider } from "../providers/index.js";
 import { createStreamCollector, emitLifecycleEvent } from "./stream.js";
 import { getAgentDriver } from "./agents/index.js";
+import { finalizeSessionExit, finalizeSessionFailure } from "./runtime-state.js";
 import type { AgentType, SandboxSession, ExecResult } from "../types/index.js";
 
 export interface RunAgentOpts {
@@ -102,7 +103,7 @@ export async function runAgent(
   }).then((result) => {
     const exitResult = result as ExecResult;
     const status = exitResult.exit_code === 0 ? "completed" : "failed";
-    endSession(session.id, exitResult.exit_code ?? 0, status);
+    finalizeSessionExit(session.id, exitResult.exit_code ?? 0);
     emitLifecycleEvent(sandbox.id, `Agent ${opts.agentType} finished with exit code ${exitResult.exit_code}`);
 
     // Fire complete webhook if configured
@@ -119,7 +120,7 @@ export async function runAgent(
       });
     }
   }).catch((err) => {
-    endSession(session.id, 1, "failed");
+    finalizeSessionFailure(session.id, err);
     emitLifecycleEvent(sandbox.id, `Agent ${opts.agentType} failed: ${(err as Error).message}`);
 
     // Fire error webhook if configured

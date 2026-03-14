@@ -5,7 +5,7 @@ import {
   updateSandbox,
   deleteSandbox as dbDeleteSandbox,
 } from "../db/sandboxes.js";
-import { createSession, listSessions, endSession } from "../db/sessions.js";
+import { createSession, listSessions } from "../db/sessions.js";
 import { listEvents } from "../db/events.js";
 import { registerAgent, listAgents } from "../db/agents.js";
 import { listProjects, ensureProject } from "../db/projects.js";
@@ -13,7 +13,14 @@ import { listWebhooks, createWebhook, deleteWebhook } from "../db/webhooks.js";
 import { getProvider } from "../providers/index.js";
 import { getDefaultProvider, getDefaultTimeout } from "../lib/config.js";
 import { createStreamCollector, emitLifecycleEvent } from "../lib/stream.js";
+import {
+  finalizeSandboxProvisionFailure,
+  finalizeSessionExit,
+  finalizeSessionFailure,
+  getErrorMessage,
+} from "../lib/runtime-state.js";
 import { addStreamListener } from "../lib/stream.js";
+import { getPackageVersion } from "../lib/version.js";
 import type { SandboxProviderName, CreateSandboxInput } from "../types/index.js";
 
 function json(data: unknown, status = 200): Response {
@@ -62,7 +69,7 @@ function matchRoute(
   return params;
 }
 
-async function handleRequest(req: Request): Promise<Response> {
+export async function handleRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const { pathname } = url;
   const method = req.method;
@@ -73,7 +80,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // Health check
   if (pathname === "/api/health" && method === "GET") {
-    return json({ status: "ok", version: "0.1.0" });
+    return json({ status: "ok", version: getPackageVersion() });
   }
 
   // ── Sandboxes ──────────────────────────────────────────────────────
@@ -89,12 +96,14 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   if (pathname === "/api/sandboxes" && method === "POST") {
+    let sandboxId: string | undefined;
     try {
       const input = await body<CreateSandboxInput>(req);
       const providerName = input.provider || getDefaultProvider();
       const timeout = input.timeout || getDefaultTimeout();
 
       const sandbox = dbCreateSandbox({ ...input, provider: providerName, timeout });
+      sandboxId = sandbox.id;
 
       const provider = await getProvider(providerName);
       const providerSandbox = await provider.create({
@@ -111,7 +120,8 @@ async function handleRequest(req: Request): Promise<Response> {
       emitLifecycleEvent(sandbox.id, `Sandbox created with provider ${providerName}`);
       return json(updated, 201);
     } catch (err) {
-      return error((err as Error).message, 500);
+      const message = sandboxId ? finalizeSandboxProvisionFailure(sandboxId, err) : getErrorMessage(err);
+      return error(message, 500);
     }
   }
 
@@ -158,6 +168,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
   params = matchRoute(pathname, method, "/api/sandboxes/:id/exec", "POST");
   if (params) {
+    let sessionId: string | undefined;
     try {
       const sandbox = getSandbox(params["id"]!);
       if (!sandbox.provider_sandbox_id) {
@@ -166,6 +177,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
       const { command } = await body<{ command: string }>(req);
       const session = createSession({ sandbox_id: sandbox.id, command });
+      sessionId = session.id;
       const collector = createStreamCollector(sandbox.id, session.id);
       const provider = await getProvider(sandbox.provider);
 
@@ -175,13 +187,16 @@ async function handleRequest(req: Request): Promise<Response> {
       });
 
       if ("exit_code" in result) {
-        endSession(session.id, result.exit_code);
+        finalizeSessionExit(session.id, result.exit_code);
         return json({ session_id: session.id, ...result });
       }
 
       return json({ session_id: session.id, status: "running" });
     } catch (err) {
-      return error((err as Error).message, 500);
+      if (sessionId) {
+        finalizeSessionFailure(sessionId, err);
+      }
+      return error(getErrorMessage(err), 500);
     }
   }
 
@@ -257,7 +272,7 @@ async function handleRequest(req: Request): Promise<Response> {
   if (pathname === "/api/projects" && method === "POST") {
     try {
       const input = await body<{ name: string; path: string; description?: string }>(req);
-      return json(ensureProject(input.name, input.path), 201);
+      return json(ensureProject(input.name, input.path, input.description), 201);
     } catch (err) {
       return error((err as Error).message, 500);
     }
