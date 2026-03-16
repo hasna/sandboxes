@@ -10,7 +10,7 @@ import {
   updateSandbox,
   deleteSandbox as deleteSandboxDb,
 } from "../db/sandboxes.js";
-import { createSession } from "../db/sessions.js";
+import { createSession, getSession } from "../db/sessions.js";
 import { listEvents } from "../db/events.js";
 import { registerAgent, listAgents } from "../db/agents.js";
 import {
@@ -75,6 +75,7 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "read_file", description: "Read a file from a sandbox" },
   { name: "write_file", description: "Write a file to a sandbox" },
   { name: "list_files", description: "List files in a sandbox directory" },
+  { name: "get_session", description: "Get session details and exit code (useful for background commands)" },
   { name: "get_logs", description: "Get sandbox/session event logs" },
   { name: "register_agent", description: "Register an agent" },
   { name: "list_agents", description: "List all registered agents" },
@@ -472,7 +473,24 @@ server.tool(
   },
 );
 
-// 11. get_logs
+// 11. get_session
+server.tool(
+  "get_session",
+  "Get session details and exit code (useful for polling background command results)",
+  {
+    session_id: z.string().describe("Session ID"),
+  },
+  async (params) => {
+    try {
+      const session = getSession(params.session_id);
+      return ok(session);
+    } catch (e) {
+      return err(e);
+    }
+  },
+);
+
+// 12. get_logs
 server.tool(
   "get_logs",
   "Get sandbox/session event logs",
