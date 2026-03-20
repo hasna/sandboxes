@@ -335,6 +335,31 @@ program
     }
   });
 
+// ── remove (alias for delete) ──────────────────────────────────────────
+
+for (const alias of ["remove", "uninstall", "rm"]) {
+  program
+    .command(`${alias} <id>`)
+    .description(`Delete a sandbox (alias for delete)`)
+    .action(async (id) => {
+      try {
+        const sandbox = getSandbox(id);
+        if (sandbox.provider_sandbox_id) {
+          try {
+            const p = await getProvider(sandbox.provider);
+            await p.delete(sandbox.provider_sandbox_id);
+          } catch {
+            // Provider delete may fail if already gone — continue with DB cleanup
+          }
+        }
+        deleteSandbox(sandbox.id);
+        console.log(chalk.green(`Sandbox ${shortId(sandbox.id)} deleted.`));
+      } catch (err) {
+        handleError(err);
+      }
+    });
+}
+
 // ── logs ─────────────────────────────────────────────────────────────
 
 program
