@@ -354,10 +354,14 @@ server.tool(
       const callEnv = { ...sandbox.env_vars, ...params.env_vars };
       const env = Object.keys(callEnv).length > 0 ? callEnv : undefined;
 
+      // Heredoc fix: commands containing << are passed through bash to support heredoc syntax
+      const needsShell = /<<\s*['"]?[A-Z]+['"]?/.test(params.command);
+      const effectiveCommand = needsShell ? `bash -c ${JSON.stringify(params.command)}` : params.command;
+
       if (params.background) {
         // Run without background:true so E2B fires onStdout/onStderr callbacks,
         // but detach the promise so we return immediately.
-        provider.exec(sandbox.provider_sandbox_id, params.command, {
+        provider.exec(sandbox.provider_sandbox_id, effectiveCommand, {
           onStdout: collector.onStdout,
           onStderr: collector.onStderr,
           env,
@@ -369,10 +373,14 @@ server.tool(
         }).catch(() => {
           finalizeSessionFailure(session.id);
         });
-        return ok({ session_id: session.id, background: true });
+        return ok({
+          session_id: session.id,
+          background: true,
+          message: "Command started in background. Use get_session to check completion status and exit_code. Use bg_wait_session to block until done.",
+        });
       }
 
-      const result = await provider.exec(sandbox.provider_sandbox_id, params.command, {
+      const result = await provider.exec(sandbox.provider_sandbox_id, effectiveCommand, {
         onStdout: collector.onStdout,
         onStderr: collector.onStderr,
         env,
@@ -484,6 +492,45 @@ server.tool(
     try {
       const session = getSession(params.session_id);
       return ok(session);
+    } catch (e) {
+      return err(e);
+    }
+  },
+);
+
+// 11b. bg_wait_session
+server.tool(
+  "bg_wait_session",
+  "Wait (poll) for a background command session to complete. Returns exit_code, stdout, stderr when done. Use after exec_command with background:true.",
+  {
+    session_id: z.string().describe("Session ID from exec_command background:true response"),
+    timeout_seconds: z.number().optional().describe("Max seconds to wait (default: 300)"),
+    poll_interval_ms: z.number().optional().describe("Poll interval in ms (default: 1000)"),
+  },
+  async (params) => {
+    try {
+      const timeoutMs = (params.timeout_seconds ?? 300) * 1000;
+      const pollMs = params.poll_interval_ms ?? 1000;
+      const deadline = Date.now() + timeoutMs;
+
+      while (Date.now() < deadline) {
+        const session = getSession(params.session_id);
+        if (session.status === "completed" || session.status === "failed" || session.status === "killed") {
+          const events = listEvents({ session_id: session.id, limit: 10000 });
+          const stdout = events.filter((e) => e.type === "stdout").map((e) => e.data).join("");
+          const stderr = events.filter((e) => e.type === "stderr").map((e) => e.data).join("");
+          return ok({
+            session_id: session.id,
+            status: session.status,
+            exit_code: session.exit_code ?? ((session.status === "failed" || session.status === "killed") ? 1 : 0),
+            stdout,
+            stderr,
+          });
+        }
+        // Poll delay
+        await new Promise<void>((r) => setTimeout(r, pollMs));
+      }
+      return err(`Session ${params.session_id} did not complete within ${params.timeout_seconds ?? 300}s`);
     } catch (e) {
       return err(e);
     }
