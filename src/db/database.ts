@@ -208,6 +208,12 @@ INSERT OR IGNORE INTO _migrations (id) VALUES (5);
 CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), message TEXT NOT NULL, email TEXT, category TEXT DEFAULT 'general', version TEXT, machine_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 INSERT OR IGNORE INTO _migrations (id) VALUES (6);
   `,
+
+  // Migration 7: Agent focus
+  `
+ALTER TABLE agents ADD COLUMN active_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+INSERT OR IGNORE INTO _migrations (id) VALUES (7);
+  `,
 ];
 
 let db: Database | null = null;

@@ -76,6 +76,22 @@ export function listAgents(): Agent[] {
   return rows.map(rowToAgent);
 }
 
+export function heartbeatAgent(idOrName: string): Agent {
+  const db = getDatabase();
+  const agent = getAgentByName(idOrName) ?? (() => { try { return getAgent(idOrName); } catch { return null; } })();
+  if (!agent) throw new AgentNotFoundError(idOrName);
+  db.query("UPDATE agents SET last_seen_at = ? WHERE id = ?").run(now(), agent.id);
+  return getAgent(agent.id);
+}
+
+export function setAgentFocus(idOrName: string, projectId: string | null): Agent {
+  const db = getDatabase();
+  const agent = getAgentByName(idOrName) ?? (() => { try { return getAgent(idOrName); } catch { return null; } })();
+  if (!agent) throw new AgentNotFoundError(idOrName);
+  db.query("UPDATE agents SET active_project_id = ?, last_seen_at = ? WHERE id = ?").run(projectId, now(), agent.id);
+  return getAgent(agent.id);
+}
+
 export function deleteAgent(id: string): void {
   const db = getDatabase();
 

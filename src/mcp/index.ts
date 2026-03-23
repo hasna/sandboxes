@@ -13,7 +13,7 @@ import {
 } from "../db/sandboxes.js";
 import { createSession, getSession } from "../db/sessions.js";
 import { listEvents } from "../db/events.js";
-import { registerAgent, listAgents } from "../db/agents.js";
+import { registerAgent, listAgents, heartbeatAgent, setAgentFocus } from "../db/agents.js";
 import {
   listProjects,
   ensureProject,
@@ -78,8 +78,10 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "list_files", description: "List files in a sandbox directory" },
   { name: "get_session", description: "Get session details and exit code (useful for background commands)" },
   { name: "get_logs", description: "Get sandbox/session event logs" },
-  { name: "register_agent", description: "Register an agent" },
+  { name: "register_agent", description: "Register an agent (idempotent, auto-heartbeat)" },
   { name: "list_agents", description: "List all registered agents" },
+  { name: "heartbeat", description: "Update last_seen_at to signal agent is active" },
+  { name: "set_focus", description: "Set active project context for agent" },
   { name: "register_project", description: "Register a project" },
   { name: "list_projects", description: "List all projects" },
   { name: "describe_tools", description: "List all available tools" },
@@ -593,7 +595,38 @@ server.tool(
   },
 );
 
-// 14. register_project
+// 14. heartbeat
+server.tool(
+  "heartbeat",
+  "Update last_seen_at to signal agent is active. Call periodically during long tasks.",
+  { agent_id: z.string().describe("Agent ID or name") },
+  async (params) => {
+    try {
+      return ok(heartbeatAgent(params.agent_id));
+    } catch (e) {
+      return err(e);
+    }
+  },
+);
+
+// 15. set_focus
+server.tool(
+  "set_focus",
+  "Set active project context for this agent session.",
+  {
+    agent_id: z.string().describe("Agent ID or name"),
+    project_id: z.string().nullable().optional().describe("Project ID to focus on, or null to clear"),
+  },
+  async (params) => {
+    try {
+      return ok(setAgentFocus(params.agent_id, params.project_id ?? null));
+    } catch (e) {
+      return err(e);
+    }
+  },
+);
+
+// 16. register_project
 server.tool(
   "register_project",
   "Register a project",
