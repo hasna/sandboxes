@@ -72,7 +72,8 @@
     "test": "bun test",
     "dev:cli": "bun run src/cli/index.tsx",
     "dev:mcp": "bun run src/mcp/index.ts",
-    "dev:serve": "bun run src/server/index.ts"
+    "dev:serve": "bun run src/server/index.ts",
+    "postinstall": "mkdir -p $HOME/.hasna/sandboxes 2>/dev/null || true"
   },
   "type": "module",
   "types": "dist/index.d.ts"
