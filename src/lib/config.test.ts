@@ -9,13 +9,13 @@ const testConfig = join(testDir, "config.json");
 beforeEach(() => {
   // Override HOME to use test dir
   process.env["HOME"] = "/tmp/test-sandboxes-home";
-  mkdirSync("/tmp/test-sandboxes-home/.sandboxes", { recursive: true });
+  mkdirSync("/tmp/test-sandboxes-home/.hasna/sandboxes", { recursive: true });
 });
 
 afterEach(() => {
   try {
-    if (existsSync("/tmp/test-sandboxes-home/.sandboxes/config.json")) {
-      unlinkSync("/tmp/test-sandboxes-home/.sandboxes/config.json");
+    if (existsSync("/tmp/test-sandboxes-home/.hasna/sandboxes/config.json")) {
+      unlinkSync("/tmp/test-sandboxes-home/.hasna/sandboxes/config.json");
     }
   } catch { /* ignore */ }
   delete process.env["E2B_API_KEY"];

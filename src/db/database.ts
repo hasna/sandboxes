@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, cpSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -20,16 +20,31 @@ function findNearestDb(startDir: string): string | null {
 }
 
 function getDbPath(): string {
-  if (process.env["SANDBOXES_DB_PATH"]) {
-    return process.env["SANDBOXES_DB_PATH"];
-  }
+  // Support env var overrides
+  const envPath = process.env["HASNA_SANDBOXES_DB_PATH"] ?? process.env["SANDBOXES_DB_PATH"];
+  if (envPath) return envPath;
 
+  // Check for project-local .sandboxes/ directory
   const cwd = process.cwd();
   const nearest = findNearestDb(cwd);
   if (nearest) return nearest;
 
+  // Global: ~/.hasna/sandboxes/ (with backward compat from ~/.sandboxes/)
   const home = process.env["HOME"] || process.env["USERPROFILE"] || "~";
-  return join(home, ".sandboxes", "sandboxes.db");
+  const newDir = join(home, ".hasna", "sandboxes");
+  const oldDir = join(home, ".sandboxes");
+
+  // Auto-migrate from old location if new dir doesn't exist yet
+  if (!existsSync(newDir) && existsSync(oldDir)) {
+    try {
+      mkdirSync(join(home, ".hasna"), { recursive: true });
+      cpSync(oldDir, newDir, { recursive: true });
+    } catch {
+      // Fall through
+    }
+  }
+
+  return join(newDir, "sandboxes.db");
 }
 
 function ensureDir(filePath: string): void {

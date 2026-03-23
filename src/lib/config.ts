@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, cpSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { SandboxesConfig, SandboxProviderName } from "../types/index.js";
 
@@ -10,7 +10,20 @@ const ENV_KEYS: Record<SandboxProviderName, string> = {
 
 function getConfigPath(): string {
   const home = process.env["HOME"] || process.env["USERPROFILE"] || "~";
-  return join(home, ".sandboxes", "config.json");
+  const newDir = join(home, ".hasna", "sandboxes");
+  const oldDir = join(home, ".sandboxes");
+
+  // Auto-migrate from old location if new dir doesn't exist yet
+  if (!existsSync(newDir) && existsSync(oldDir)) {
+    try {
+      mkdirSync(join(home, ".hasna"), { recursive: true });
+      cpSync(oldDir, newDir, { recursive: true });
+    } catch {
+      // Fall through
+    }
+  }
+
+  return join(newDir, "config.json");
 }
 
 export function loadConfig(): SandboxesConfig {
