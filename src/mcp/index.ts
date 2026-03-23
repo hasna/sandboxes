@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
+import { getDatabase } from "../db/database.js";
 import {
   createSandbox,
   getSandbox,
@@ -1053,6 +1054,20 @@ server.tool(
         description: info.description,
         has_setup_script: !!info.setup_script,
       })));
+    } catch (e) { return err(e); }
+  },
+);
+
+// 37. send_feedback
+server.tool(
+  "send_feedback",
+  "Send feedback about this service",
+  { message: z.string(), email: z.string().optional(), category: z.enum(["bug", "feature", "general"]).optional() },
+  async (params) => {
+    try {
+      const db = getDatabase();
+      db.run("INSERT INTO feedback (message, email, category, version) VALUES (?, ?, ?, ?)", [params.message, params.email || null, params.category || "general", "0.1.17"]);
+      return ok("Feedback saved. Thank you!");
     } catch (e) { return err(e); }
   },
 );

@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { SqliteAdapter as Database } from "@hasna/cloud";
 import { existsSync, mkdirSync, cpSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -201,6 +201,12 @@ ALTER TABLE sandboxes ADD COLUMN budget_limit_usd REAL;
 ALTER TABLE sandboxes ADD COLUMN on_budget_exceeded TEXT NOT NULL DEFAULT 'terminate' CHECK(on_budget_exceeded IN ('terminate', 'pause', 'notify'));
 ALTER TABLE sandboxes ADD COLUMN started_at TEXT;
 INSERT OR IGNORE INTO _migrations (id) VALUES (5);
+  `,
+
+  // Migration 6: Add feedback table
+  `
+CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))), message TEXT NOT NULL, email TEXT, category TEXT DEFAULT 'general', version TEXT, machine_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+INSERT OR IGNORE INTO _migrations (id) VALUES (6);
   `,
 ];
 

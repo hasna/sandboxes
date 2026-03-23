@@ -10,6 +10,7 @@
   "dependencies": {
     "@daytonaio/sdk": "^0.18.0",
     "@e2b/code-interpreter": "^1.5.0",
+    "@hasna/cloud": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
