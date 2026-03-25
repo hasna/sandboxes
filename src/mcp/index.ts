@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { registerCloudTools } from "@hasna/cloud";
 import { z } from "zod";
 
 import { getDatabase } from "../db/database.js";
@@ -1106,4 +1107,5 @@ server.tool(
 );
 
 const transport = new StdioServerTransport();
+registerCloudTools(server, "sandboxes");
 await server.connect(transport);
