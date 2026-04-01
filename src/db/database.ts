@@ -1,4 +1,5 @@
-import { SqliteAdapter as Database } from "@hasna/cloud";
+import { SqliteAdapter } from "@hasna/cloud";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, cpSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -216,6 +217,7 @@ INSERT OR IGNORE INTO _migrations (id) VALUES (7);
   `,
 ];
 
+let _adapter: SqliteAdapter | null = null;
 let db: Database | null = null;
 
 function runMigrations(database: Database): void {
@@ -242,7 +244,8 @@ export function getDatabase(): Database {
   const dbPath = getDbPath();
   ensureDir(dbPath);
 
-  db = new Database(dbPath);
+  _adapter = new SqliteAdapter(dbPath);
+  db = _adapter.raw;
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
 
@@ -254,6 +257,7 @@ export function closeDatabase(): void {
   if (db) {
     db.close();
     db = null;
+    _adapter = null;
   }
 }
 
@@ -261,6 +265,7 @@ export function resetDatabase(): void {
   if (db) {
     db.close();
     db = null;
+    _adapter = null;
   }
 }
 
