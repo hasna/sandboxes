@@ -21,7 +21,7 @@ export const SESSION_STATUSES = [
 ] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
-export const AGENT_TYPES = ["claude", "codex", "gemini", "opencode", "pi", "custom"] as const;
+export const AGENT_TYPES = ["claude", "codex", "gemini", "opencode", "pi", "takumi", "custom"] as const;
 export type AgentType = (typeof AGENT_TYPES)[number];
 
 export const EVENT_TYPES = [
