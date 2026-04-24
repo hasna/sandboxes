@@ -24,6 +24,19 @@ export { BUILTIN_IMAGES, resolveImage, getBuiltinImageSetupScript } from "./lib/
 export { getProvider } from "./providers/index.js";
 export type { SandboxProvider, ProviderSandbox, CreateSandboxOpts, ExecOptions } from "./providers/types.js";
 
+// SDK
+export {
+  SandboxesSDK,
+  createSandboxesSDK,
+} from "./sdk.js";
+export type {
+  ExecCommandResult,
+  ProviderFactory,
+  RunAgentOptions,
+  SandboxesSDKOptions,
+  WaitForSessionOptions,
+} from "./sdk.js";
+
 // Stream
 export { createStreamCollector, addStreamListener, emitLifecycleEvent } from "./lib/stream.js";
 
