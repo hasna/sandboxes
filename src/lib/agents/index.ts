@@ -1,4 +1,3 @@
-import { ClaudeDriver } from "./claude.js";
 import { CodexDriver } from "./codex.js";
 import { GeminiDriver } from "./gemini.js";
 import { OpenCodeDriver } from "./opencode.js";
@@ -9,7 +8,6 @@ import type { AgentDriver } from "./types.js";
 export type { AgentDriver };
 
 const DRIVERS: AgentDriver[] = [
-  new ClaudeDriver(),
   new CodexDriver(),
   new GeminiDriver(),
   new OpenCodeDriver(),

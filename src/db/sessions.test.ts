@@ -42,11 +42,11 @@ describe("createSession", () => {
     const session = createSession({
       sandbox_id: sandboxId,
       agent_name: "maximus",
-      agent_type: "claude",
+      agent_type: "codex",
       command: "npm test",
     });
     expect(session.agent_name).toBe("maximus");
-    expect(session.agent_type).toBe("claude");
+    expect(session.agent_type).toBe("codex");
     expect(session.command).toBe("npm test");
   });
 });

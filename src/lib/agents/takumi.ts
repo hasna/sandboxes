@@ -13,9 +13,9 @@ export class TakumiDriver implements AgentDriver {
     // Install via bun (preferred) or npm
     const bunCheck = await provider.exec(providerSandboxId, "which bun 2>/dev/null || echo MISSING") as ExecResult;
     if (bunCheck.stdout.trim() !== "MISSING") {
-      await provider.exec(providerSandboxId, "bun install -g @hasnaxyz/takumi 2>&1");
+      await provider.exec(providerSandboxId, "bun install -g @hasna/takumi 2>&1");
     } else {
-      await provider.exec(providerSandboxId, "npm install -g @hasnaxyz/takumi 2>&1 || sudo npm install -g @hasnaxyz/takumi 2>&1");
+      await provider.exec(providerSandboxId, "npm install -g @hasna/takumi 2>&1 || sudo npm install -g @hasna/takumi 2>&1");
     }
   }
 
@@ -28,7 +28,7 @@ export class TakumiDriver implements AgentDriver {
     });
     await provider.exec(providerSandboxId, `mkdir -p ~/.takumi && echo '${config}' > ~/.takumi.json`);
 
-    // Write the npm auth token if provided so @hasnaxyz/takumi can be fetched
+    // Write the npm auth token if provided so private registries can be used.
     const npmToken = envVars["NPM_TOKEN"] ?? envVars["NPM_AUTH_TOKEN"];
     if (npmToken) {
       await provider.exec(

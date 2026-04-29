@@ -9,11 +9,6 @@ export const BUILTIN_IMAGES: Record<string, { e2b: string; description: string; 
     description: 'Node 20 + npm + pnpm + yarn',
     setup_script: 'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs && npm install -g pnpm yarn',
   },
-  'node20-claude': {
-    e2b: 'e2bdev/base:latest',
-    description: 'Node 20 + Claude Code CLI pre-installed',
-    setup_script: 'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs && npm install -g @anthropic-ai/claude-code && mkdir -p ~/.claude && echo \'{"hasCompletedOnboarding":true,"hasTrustDialogAccepted":true,"hasAcknowledgedCostThreshold":true}\' > ~/.claude.json',
-  },
   'node20-codex': {
     e2b: 'e2bdev/base:latest',
     description: 'Node 20 + Codex CLI pre-installed',

@@ -1,6 +1,6 @@
 {
   "name": "@hasna/sandboxes",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "author": "Andrei Hasna <andrei@hasna.com>",
   "repository": {
     "type": "git",
@@ -56,7 +56,6 @@
     "mcp",
     "ai",
     "coding-agent",
-    "claude",
     "codex",
     "gemini",
     "cli"
@@ -67,7 +66,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bun build src/cli/index.tsx --outdir dist/cli --target bun --external ink --external react --external chalk --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/mcp/index.ts --outdir dist/mcp --target bun --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/server/index.ts --outdir dist/server --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/index.ts --outdir dist --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && tsc --emitDeclarationOnly --outDir dist",
+    "build": "rm -rf dist && bun build src/cli/index.tsx --outdir dist/cli --target bun --external ink --external react --external chalk --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/mcp/index.ts --outdir dist/mcp --target bun --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/server/index.ts --outdir dist/server --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && bun build src/index.ts --outdir dist --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external modal && tsc --emitDeclarationOnly --outDir dist",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "dev:cli": "bun run src/cli/index.tsx",

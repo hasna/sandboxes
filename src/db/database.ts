@@ -101,7 +101,7 @@ const MIGRATIONS = [
     id TEXT PRIMARY KEY,
     sandbox_id TEXT NOT NULL REFERENCES sandboxes(id) ON DELETE CASCADE,
     agent_name TEXT,
-    agent_type TEXT CHECK(agent_type IN ('claude', 'codex', 'gemini', 'custom')),
+    agent_type TEXT CHECK(agent_type IN ('codex', 'gemini', 'opencode', 'pi', 'takumi', 'custom')),
     command TEXT,
     status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed', 'killed')),
     exit_code INTEGER,

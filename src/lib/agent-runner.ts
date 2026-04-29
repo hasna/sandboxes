@@ -146,7 +146,7 @@ export async function stopAgent(sandboxId: string): Promise<void> {
 
   const provider = await getProvider(sandbox.provider);
   try {
-    await provider.exec(sandbox.provider_sandbox_id, "pkill -f 'claude\\|codex\\|gemini\\|opencode\\|pi' || true");
+    await provider.exec(sandbox.provider_sandbox_id, "pkill -f 'codex\\|gemini\\|opencode\\|pi\\|takumi' || true");
   } catch {
     // Best effort
   }

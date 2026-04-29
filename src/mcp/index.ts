@@ -699,7 +699,7 @@ server.tool(
   "Run an AI agent inside a sandbox",
   {
     sandbox_id: z.string().describe("Sandbox ID"),
-    agent_type: z.enum(["claude", "codex", "gemini", "opencode", "pi", "takumi", "custom"]).describe("Agent type"),
+    agent_type: z.enum(["codex", "gemini", "opencode", "pi", "takumi", "custom"]).describe("Agent type"),
     prompt: z.string().describe("Prompt for the agent"),
     agent_name: z.string().optional().describe("Agent name"),
     command: z.string().optional().describe("Custom command (for 'custom' type)"),

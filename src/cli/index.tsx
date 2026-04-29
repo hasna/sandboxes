@@ -2,7 +2,6 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { execSync } from "node:child_process";
 
 import {
   createSandbox,
@@ -506,7 +505,7 @@ const agentCmd = program
 agentCmd
   .command("run <id>")
   .description("Run an AI agent inside a sandbox")
-  .requiredOption("-t, --type <type>", "Agent type: claude, codex, gemini, custom")
+  .requiredOption("-t, --type <type>", "Agent type: takumi, codex, gemini, opencode, pi, custom")
   .requiredOption("-p, --prompt <prompt>", "Prompt for the agent")
   .option("-n, --name <name>", "Agent name")
   .option("-c, --command <cmd>", "Custom command (for 'custom' type)")
@@ -514,7 +513,7 @@ agentCmd
     try {
       const { runAgent } = await import("../lib/agent-runner.js");
       const session = await runAgent(id, {
-        agentType: opts.type as "claude" | "codex" | "gemini" | "custom",
+        agentType: opts.type as "takumi" | "codex" | "gemini" | "opencode" | "pi" | "custom",
         prompt: opts.prompt,
         agentName: opts.name,
         command: opts.command,
@@ -650,8 +649,7 @@ program
 
 program
   .command("mcp")
-  .description("Install MCP server for AI agents")
-  .option("--claude", "Install for Claude Code (default)")
+  .description("Install MCP server for supported AI clients")
   .option("--codex", "Install for Codex")
   .option("--gemini", "Install for Gemini")
   .action((opts) => {
@@ -660,17 +658,10 @@ program
 
       if (opts.codex) targets.push("codex");
       if (opts.gemini) targets.push("gemini");
-      if (opts.claude || targets.length === 0) targets.push("claude");
+      if (targets.length === 0) targets.push("codex");
 
       for (const target of targets) {
         switch (target) {
-          case "claude": {
-            const cmd = `claude mcp add --transport stdio --scope user sandboxes -- bunx --bun --package @hasna/sandboxes sandboxes-mcp`;
-            console.log(chalk.dim(`Running: ${cmd}`));
-            execSync(cmd, { stdio: "inherit" });
-            console.log(chalk.green("Installed MCP server for Claude Code."));
-            break;
-          }
           case "codex": {
             console.log(chalk.yellow("Codex MCP installation: add the following to ~/.codex/config.toml:"));
             console.log();
