@@ -1,5 +1,6 @@
 import { ProviderError } from "../types/index.js";
-import type { ExecResult, ExecHandle, FileInfo } from "../types/index.js";
+import type { ExecResult, ExecHandle, FileInfo, UploadDirOptions, UploadDirResult } from "../types/index.js";
+import { tarDirectory, buildUntarCommand } from "../lib/archive.js";
 import type {
   SandboxProvider,
   ProviderSandbox,
@@ -261,6 +262,40 @@ export class ModalProvider implements SandboxProvider {
       throw new ProviderError(
         "modal",
         `Failed to list files at ${path}: ${(err as Error).message}`
+      );
+    }
+  }
+
+  async uploadDir(sandboxId: string, localDir: string, remoteDir: string, opts?: UploadDirOptions): Promise<UploadDirResult> {
+    try {
+      const archive = await tarDirectory(localDir, opts);
+      const b64 = archive.toString("base64");
+      const remoteTar = `/tmp/sandboxes-upload-${Date.now()}.tar.gz`;
+      const remoteB64 = `${remoteTar}.b64`;
+
+      const execChecked = async (cmd: string): Promise<void> => {
+        const result = (await this.exec(sandboxId, `sh -c ${this.shellEscape(cmd)}`)) as ExecResult;
+        if (result.exit_code !== 0) {
+          throw new Error(result.stderr || `command exited with code ${result.exit_code}`);
+        }
+      };
+
+      // Stream the base64 archive in chunks to stay under shell arg-length limits.
+      await execChecked(`: > ${remoteB64}`);
+      const CHUNK = 60000;
+      for (let i = 0; i < b64.length; i += CHUNK) {
+        const chunk = b64.slice(i, i + CHUNK);
+        await execChecked(`printf '%s' ${this.shellEscape(chunk)} >> ${remoteB64}`);
+      }
+      await execChecked(
+        `base64 -d ${remoteB64} > ${remoteTar} && ${buildUntarCommand(remoteTar, remoteDir)} && rm -f ${remoteB64}`
+      );
+      return { bytes: archive.length };
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      throw new ProviderError(
+        "modal",
+        `Failed to upload directory to ${remoteDir}: ${(err as Error).message}`
       );
     }
   }

@@ -496,6 +496,39 @@ filesCmd
     }
   });
 
+filesCmd
+  .command("sync <id> <localDir> <remoteDir>")
+  .description("Upload a local directory into a sandbox (fast archive, no git clone)")
+  .option(
+    "--exclude <patterns>",
+    "Comma-separated exclude patterns (default: node_modules,.git,dist,…)"
+  )
+  .action(async (id, localDir, remoteDir, opts: { exclude?: string }) => {
+    try {
+      const sandbox = getSandbox(id);
+      if (!sandbox.provider_sandbox_id) {
+        console.error(chalk.red("Sandbox has no provider ID."));
+        process.exit(1);
+      }
+
+      const p = await getProvider(sandbox.provider);
+      const exclude = opts.exclude
+        ? opts.exclude.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
+      const result = await p.uploadDir(
+        sandbox.provider_sandbox_id,
+        localDir,
+        remoteDir,
+        exclude ? { exclude } : undefined
+      );
+      console.log(
+        chalk.green(`Uploaded ${localDir} → ${remoteDir} (${result.bytes} bytes)`)
+      );
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
 // ── agent ────────────────────────────────────────────────────────────
 
 const agentCmd = program
@@ -505,18 +538,28 @@ const agentCmd = program
 agentCmd
   .command("run <id>")
   .description("Run an AI agent inside a sandbox")
-  .requiredOption("-t, --type <type>", "Agent type: takumi, codex, gemini, opencode, pi, custom")
+  .requiredOption("-t, --type <type>", "Agent type: claude, takumi, codex, gemini, opencode, pi, custom")
   .requiredOption("-p, --prompt <prompt>", "Prompt for the agent")
   .option("-n, --name <name>", "Agent name")
   .option("-c, --command <cmd>", "Custom command (for 'custom' type)")
-  .action(async (id: string, opts: { type: string; prompt: string; name?: string; command?: string }) => {
+  .option(
+    "--secret <mapping>",
+    "Inject a vault secret as an env var: ENV_NAME=vault/key (repeatable)",
+    (val: string, prev: string[]) => [...prev, val],
+    [] as string[]
+  )
+  .action(async (id: string, opts: { type: string; prompt: string; name?: string; command?: string; secret: string[] }) => {
     try {
       const { runAgent } = await import("../lib/agent-runner.js");
+      const callEnvVars = opts.secret.length
+        ? await (await import("../lib/secrets.js")).resolveSecretSpecs(opts.secret)
+        : undefined;
       const session = await runAgent(id, {
-        agentType: opts.type as "takumi" | "codex" | "gemini" | "opencode" | "pi" | "custom",
+        agentType: opts.type as "claude" | "takumi" | "codex" | "gemini" | "opencode" | "pi" | "custom",
         prompt: opts.prompt,
         agentName: opts.name,
         command: opts.command,
+        callEnvVars,
         onStdout: (data: string) => process.stdout.write(data),
         onStderr: (data: string) => process.stderr.write(data),
       });

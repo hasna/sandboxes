@@ -77,6 +77,7 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "read_file", description: "Read a file from a sandbox" },
   { name: "write_file", description: "Write a file to a sandbox" },
   { name: "list_files", description: "List files in a sandbox directory" },
+  { name: "upload_dir", description: "Upload a local directory into a sandbox (fast archive, no git clone)" },
   { name: "get_session", description: "Get session details and exit code (useful for background commands)" },
   { name: "get_logs", description: "Get sandbox/session event logs" },
   { name: "register_agent", description: "Register an agent (idempotent, auto-heartbeat)" },
@@ -485,6 +486,41 @@ server.tool(
   },
 );
 
+// 10b. upload_dir
+server.tool(
+  "upload_dir",
+  "Upload a local directory into a sandbox as a single archive (fast, no git clone)",
+  {
+    sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+    local_dir: z.string().describe("Local directory path on the host to upload"),
+    remote_dir: z.string().describe("Destination directory inside the sandbox"),
+    exclude: z
+      .array(z.string())
+      .optional()
+      .describe("Patterns to exclude (defaults to node_modules, .git, dist, …)"),
+  },
+  async (params) => {
+    try {
+      const sandbox = getSandbox(params.sandbox_id);
+      if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
+      const provider = await getProvider(sandbox.provider);
+      const result = await provider.uploadDir(
+        sandbox.provider_sandbox_id,
+        params.local_dir,
+        params.remote_dir,
+        params.exclude ? { exclude: params.exclude } : undefined
+      );
+      return ok({
+        local_dir: params.local_dir,
+        remote_dir: params.remote_dir,
+        bytes: result.bytes,
+      });
+    } catch (e) {
+      return err(e);
+    }
+  },
+);
+
 // 11. get_session
 server.tool(
   "get_session",
@@ -699,22 +735,29 @@ server.tool(
   "Run an AI agent inside a sandbox",
   {
     sandbox_id: z.string().describe("Sandbox ID"),
-    agent_type: z.enum(["codex", "gemini", "opencode", "pi", "takumi", "custom"]).describe("Agent type"),
+    agent_type: z.enum(["claude", "codex", "gemini", "opencode", "pi", "takumi", "custom"]).describe("Agent type"),
     prompt: z.string().describe("Prompt for the agent"),
     agent_name: z.string().optional().describe("Agent name"),
     command: z.string().optional().describe("Custom command (for 'custom' type)"),
     env_vars: z.record(z.string()).optional().describe("Per-call environment variables (merged with sandbox env_vars, not persisted)"),
+    secrets: z.array(z.string()).optional().describe("Vault secrets to inject as env vars: array of 'ENV_NAME=vault/key' (resolved from @hasna/secrets at call time, never persisted)"),
     webhook_url: z.string().optional().describe("URL to POST result to when agent finishes"),
     webhook_events: z.array(z.enum(['start', 'complete', 'error'])).optional().describe("Which events to notify on (default: all)"),
   },
   async (params) => {
     try {
+      let callEnvVars = params.env_vars;
+      if (params.secrets && params.secrets.length > 0) {
+        const { resolveSecretSpecs } = await import("../lib/secrets.js");
+        const secretEnv = await resolveSecretSpecs(params.secrets);
+        callEnvVars = { ...secretEnv, ...params.env_vars };
+      }
       const session = await runAgentLib(params.sandbox_id, {
         agentType: params.agent_type as AgentType,
         prompt: params.prompt,
         agentName: params.agent_name,
         command: params.command,
-        callEnvVars: params.env_vars,
+        callEnvVars,
         webhookUrl: params.webhook_url,
         webhookEvents: params.webhook_events,
       });

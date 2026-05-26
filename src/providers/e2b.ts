@@ -1,6 +1,7 @@
 import { Sandbox as E2BSandbox } from "@e2b/code-interpreter";
 import { ProviderError } from "../types/index.js";
-import type { ExecResult, ExecHandle, FileInfo } from "../types/index.js";
+import type { ExecResult, ExecHandle, FileInfo, UploadDirOptions, UploadDirResult } from "../types/index.js";
+import { tarDirectory, buildUntarCommand } from "../lib/archive.js";
 import type {
   SandboxProvider,
   ProviderSandbox,
@@ -198,6 +199,29 @@ export class E2BProvider implements SandboxProvider {
       throw new ProviderError(
         "e2b",
         `Failed to list files at ${path}: ${(err as Error).message}`
+      );
+    }
+  }
+
+  async uploadDir(sandboxId: string, localDir: string, remoteDir: string, opts?: UploadDirOptions): Promise<UploadDirResult> {
+    const sandbox = await this.getInstance(sandboxId);
+    try {
+      const archive = await tarDirectory(localDir, opts);
+      const remoteTar = `/tmp/sandboxes-upload-${Date.now()}.tar.gz`;
+      const data = archive.buffer.slice(
+        archive.byteOffset,
+        archive.byteOffset + archive.byteLength
+      ) as ArrayBuffer;
+      await sandbox.files.write(remoteTar, data);
+      const result = await sandbox.commands.run(buildUntarCommand(remoteTar, remoteDir));
+      if ((result.exitCode ?? 0) !== 0) {
+        throw new Error(result.stderr || `untar exited with code ${result.exitCode}`);
+      }
+      return { bytes: archive.length };
+    } catch (err) {
+      throw new ProviderError(
+        "e2b",
+        `Failed to upload directory to ${remoteDir}: ${(err as Error).message}`
       );
     }
   }

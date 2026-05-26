@@ -1,4 +1,4 @@
-import type { ExecResult, ExecHandle, FileInfo } from "../types/index.js";
+import type { ExecResult, ExecHandle, FileInfo, UploadDirOptions, UploadDirResult } from "../types/index.js";
 
 export interface CreateSandboxOpts {
   image?: string;
@@ -38,6 +38,9 @@ export interface SandboxProvider {
   readFile(sandboxId: string, path: string, opts?: { encoding?: 'utf8' | 'base64' | 'hex'; offset?: number; limit?: number }): Promise<string>;
   writeFile(sandboxId: string, path: string, content: string): Promise<void>;
   listFiles(sandboxId: string, path: string, opts?: { recursive?: boolean; glob?: string }): Promise<FileInfo[]>;
+
+  /** Upload a local directory tree into the sandbox at `remoteDir`, fast (single archive), without a git clone. */
+  uploadDir(sandboxId: string, localDir: string, remoteDir: string, opts?: UploadDirOptions): Promise<UploadDirResult>;
 
   stop(sandboxId: string): Promise<void>;
   delete(sandboxId: string): Promise<void>;

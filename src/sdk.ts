@@ -22,6 +22,8 @@ import {
   finalizeSessionFailure,
 } from "./lib/runtime-state.js";
 import { getAgentDriver } from "./lib/agents/index.js";
+import { resolveSecretEnv } from "./lib/secrets.js";
+import type { SecretMapping, SecretResolver } from "./lib/secrets.js";
 import type {
   AgentType,
   CreateSandboxInput,
@@ -32,6 +34,8 @@ import type {
   SandboxEvent,
   SandboxProviderName,
   SandboxSession,
+  UploadDirOptions,
+  UploadDirResult,
 } from "./types/index.js";
 import type { StreamListener } from "./lib/stream.js";
 
@@ -57,6 +61,10 @@ export interface RunAgentOptions {
   agentName?: string;
   command?: string;
   callEnvVars?: Record<string, string>;
+  /** Secrets to resolve from the vault and inject as per-call env vars (never persisted). */
+  secrets?: SecretMapping[];
+  /** Override the secret resolver (defaults to the `secrets` CLI). Useful for tests. */
+  secretResolver?: SecretResolver;
   onStdout?: (data: string) => void;
   onStderr?: (data: string) => void;
 }
@@ -229,13 +237,40 @@ export class SandboxesSDK {
     return provider.listFiles(sandbox.provider_sandbox_id, path, opts);
   }
 
+  async uploadDir(
+    sandboxId: string,
+    localDir: string,
+    remoteDir: string,
+    opts?: UploadDirOptions
+  ): Promise<UploadDirResult> {
+    const sandbox = this.requireProviderSandbox(sandboxId);
+    const provider = await this.getProvider(sandbox.provider);
+    const result = await provider.uploadDir(
+      sandbox.provider_sandbox_id,
+      localDir,
+      remoteDir,
+      opts
+    );
+    emitLifecycleEvent(
+      sandbox.id,
+      `uploaded ${localDir} -> ${remoteDir} (${result.bytes} bytes)`
+    );
+    return result;
+  }
+
   async runAgent(
     sandboxId: string,
     opts: RunAgentOptions
   ): Promise<SandboxSession> {
     const sandbox = this.requireProviderSandbox(sandboxId);
     const provider = await this.getProvider(sandbox.provider);
-    const env = mergeEnv(sandbox.env_vars, opts.callEnvVars);
+
+    let callEnvVars = opts.callEnvVars;
+    if (opts.secrets && opts.secrets.length > 0) {
+      const secretEnv = await resolveSecretEnv(opts.secrets, opts.secretResolver);
+      callEnvVars = { ...secretEnv, ...opts.callEnvVars };
+    }
+    const env = mergeEnv(sandbox.env_vars, callEnvVars);
 
     let command: string;
     const driver =

@@ -1,6 +1,7 @@
 import { Daytona, type Sandbox as DaytonaSandbox } from "@daytonaio/sdk";
 import { ProviderError } from "../types/index.js";
-import type { ExecResult, ExecHandle, FileInfo } from "../types/index.js";
+import type { ExecResult, ExecHandle, FileInfo, UploadDirOptions, UploadDirResult } from "../types/index.js";
+import { tarDirectory, buildUntarCommand } from "../lib/archive.js";
 import type {
   SandboxProvider,
   ProviderSandbox,
@@ -205,6 +206,25 @@ export class DaytonaProvider implements SandboxProvider {
       throw new ProviderError(
         "daytona",
         `Failed to list files at ${path}: ${(err as Error).message}`
+      );
+    }
+  }
+
+  async uploadDir(sandboxId: string, localDir: string, remoteDir: string, opts?: UploadDirOptions): Promise<UploadDirResult> {
+    const sandbox = await this.getInstance(sandboxId);
+    try {
+      const archive = await tarDirectory(localDir, opts);
+      const remoteTar = `/tmp/sandboxes-upload-${Date.now()}.tar.gz`;
+      await sandbox.fs.uploadFile(archive, remoteTar);
+      const result = await sandbox.process.executeCommand(buildUntarCommand(remoteTar, remoteDir));
+      if (result.exitCode !== 0) {
+        throw new Error(result.result || `untar exited with code ${result.exitCode}`);
+      }
+      return { bytes: archive.length };
+    } catch (err) {
+      throw new ProviderError(
+        "daytona",
+        `Failed to upload directory to ${remoteDir}: ${(err as Error).message}`
       );
     }
   }

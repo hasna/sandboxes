@@ -6,6 +6,8 @@ import type {
   ExecResult,
   FileInfo,
   SandboxProviderName,
+  UploadDirOptions,
+  UploadDirResult,
 } from "./types/index.js";
 import type {
   CreateSandboxOpts,
@@ -32,6 +34,12 @@ class FakeProvider implements SandboxProvider {
   }[] = [];
   readonly execCalls: { sandboxId: string; command: string; opts?: ExecOptions }[] =
     [];
+  readonly uploadDirCalls: {
+    sandboxId: string;
+    localDir: string;
+    remoteDir: string;
+    opts?: UploadDirOptions;
+  }[] = [];
 
   async create(opts?: CreateSandboxOpts): Promise<ProviderSandbox> {
     this.createCalls.push(opts ?? {});
@@ -112,6 +120,16 @@ class FakeProvider implements SandboxProvider {
         is_dir: false,
         size: this.files.get(filePath)?.length ?? 0,
       }));
+  }
+
+  async uploadDir(
+    sandboxId: string,
+    localDir: string,
+    remoteDir: string,
+    opts?: UploadDirOptions
+  ): Promise<UploadDirResult> {
+    this.uploadDirCalls.push({ sandboxId, localDir, remoteDir, opts });
+    return { bytes: 42 };
   }
 
   async stop(sandboxId: string): Promise<void> {
@@ -292,6 +310,35 @@ describe("SandboxesSDK", () => {
     });
   });
 
+  it("uploads a local directory through the provider and records a lifecycle event", async () => {
+    const provider = new FakeProvider();
+    const sdk = new SandboxesSDK({
+      defaultProvider: "daytona",
+      providerFactory: async () => provider,
+    });
+    const sandbox = await sdk.createSandbox();
+
+    const result = await sdk.uploadDir(sandbox.id, "/local/project", "/workspace", {
+      exclude: ["node_modules"],
+    });
+    expect(result).toEqual({ bytes: 42 });
+    expect(provider.uploadDirCalls.at(-1)).toEqual({
+      sandboxId: "provider-sandbox-1",
+      localDir: "/local/project",
+      remoteDir: "/workspace",
+      opts: { exclude: ["node_modules"] },
+    });
+
+    const lifecycleEvents = sdk
+      .listEvents({ sandbox_id: sandbox.id, type: "lifecycle" })
+      .map((event) => event.data);
+    expect(
+      lifecycleEvents.some((data) =>
+        data?.includes("uploaded /local/project -> /workspace")
+      )
+    ).toBe(true);
+  });
+
   it("runs custom agent commands and waits for sessions", async () => {
     const provider = new FakeProvider();
     const sdk = new SandboxesSDK({
@@ -315,6 +362,32 @@ describe("SandboxesSDK", () => {
       BASE: "sandbox",
       CALL_ONLY: "call",
     });
+  });
+
+  it("resolves secrets into per-call agent env without persisting them", async () => {
+    const provider = new FakeProvider();
+    const sdk = new SandboxesSDK({
+      defaultProvider: "daytona",
+      providerFactory: async () => provider,
+    });
+    const sandbox = await sdk.createSandbox({ env_vars: { BASE: "sandbox" } });
+
+    const agent = await sdk.runAgent(sandbox.id, {
+      agentType: "custom",
+      prompt: "noop",
+      command: "echo hi",
+      secrets: [{ env: "ANTHROPIC_API_KEY", key: "hasnaxyz/anthropic/live/api_key" }],
+      secretResolver: async (key) => `resolved:${key}`,
+    });
+    await sdk.waitForSession(agent.id);
+
+    // Injected into the per-call exec env...
+    expect(provider.execCalls.at(-1)?.opts?.env).toEqual({
+      BASE: "sandbox",
+      ANTHROPIC_API_KEY: "resolved:hasnaxyz/anthropic/live/api_key",
+    });
+    // ...but never written to the persisted sandbox record.
+    expect(sdk.getSandbox(sandbox.id).env_vars).toEqual({ BASE: "sandbox" });
   });
 
   it("passes merged sandbox and call env vars to non-custom agent configuration", async () => {

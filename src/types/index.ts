@@ -21,7 +21,7 @@ export const SESSION_STATUSES = [
 ] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
-export const AGENT_TYPES = ["codex", "gemini", "opencode", "pi", "takumi", "custom"] as const;
+export const AGENT_TYPES = ["claude", "codex", "gemini", "opencode", "pi", "takumi", "custom"] as const;
 export type AgentType = (typeof AGENT_TYPES)[number];
 
 export const EVENT_TYPES = [
@@ -231,6 +231,16 @@ export interface FileInfo {
   name: string;
   is_dir: boolean;
   size: number;
+}
+
+export interface UploadDirOptions {
+  /** Patterns to exclude (passed to `tar --exclude`); defaults applied by the archiver. */
+  exclude?: string[];
+}
+
+export interface UploadDirResult {
+  /** Number of bytes uploaded (compressed archive size). */
+  bytes: number;
 }
 
 // ── Config ─────────────────────────────────────────────────────────────
