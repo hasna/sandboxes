@@ -3,10 +3,14 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { buildServer, MCP_NAME } from "./server.js";
 
-export const DEFAULT_MCP_HTTP_PORT = 8831;
+export const DEFAULT_MCP_HTTP_PORT = 8875;
 
 export function isHttpMode(argv: string[]): boolean {
   return argv.includes("--http") || process.env["MCP_HTTP"] === "1";
+}
+
+export function isStdioMode(argv: string[]): boolean {
+  return argv.includes("--stdio") || process.env["MCP_STDIO"] === "1";
 }
 
 export function resolveMcpHttpPort(argv: string[]): number {
