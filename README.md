@@ -25,6 +25,17 @@ sandboxes-mcp
 
 41 tools available.
 
+## HTTP mode
+
+```bash
+sandboxes-mcp --http              # default port 8831
+MCP_HTTP=1 sandboxes-mcp
+```
+
+- Health: `GET http://127.0.0.1:8831/health`
+- MCP: `http://127.0.0.1:8831/mcp`
+- Stdio remains default. `sandboxes-serve` also mounts `/health` and `/mcp`.
+
 ## REST API
 
 ```bash

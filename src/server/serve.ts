@@ -21,6 +21,7 @@ import {
 } from "../lib/runtime-state.js";
 import { addStreamListener } from "../lib/stream.js";
 import { getPackageVersion } from "../lib/version.js";
+import { handleMcpHttpRoutes } from "../mcp/http.js";
 import type { SandboxProviderName, CreateSandboxInput } from "../types/index.js";
 
 function json(data: unknown, status = 200): Response {
@@ -77,6 +78,9 @@ export async function handleRequest(req: Request): Promise<Response> {
   if (method === "OPTIONS") {
     return json({ ok: true });
   }
+
+  const mcpResponse = await handleMcpHttpRoutes(req);
+  if (mcpResponse) return mcpResponse;
 
   // Health check
   if (pathname === "/api/health" && method === "GET") {
