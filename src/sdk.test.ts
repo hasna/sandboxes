@@ -339,6 +339,86 @@ describe("SandboxesSDK", () => {
     ).toBe(true);
   });
 
+  it("runs a one-shot sandbox command with repo upload, cwd, call env, streams, and cleanup", async () => {
+    const provider = new FakeProvider();
+    const sdk = new SandboxesSDK({
+      defaultProvider: "daytona",
+      providerFactory: async () => provider,
+    });
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const result = await sdk.runCommandInSandbox({
+      command: "bun test --filter workflow",
+      name: "testers-remote-workflow",
+      upload: {
+        localDir: "/local/testers",
+        remoteDir: "/workspace/testers",
+        exclude: ["node_modules", ".git"],
+      },
+      cwd: "/workspace/testers",
+      sandboxEnvVars: { APP_ENV: "preview" },
+      callEnvVars: { TESTERS_DB_PATH: ":memory:" },
+      commandTimeoutMs: 120000,
+      cleanup: "delete",
+      onStdout: (data) => stdout.push(data),
+      onStderr: (data) => stderr.push(data),
+    });
+
+    expect(result.sandbox.name).toBe("testers-remote-workflow");
+    expect(result.upload).toEqual({ bytes: 42 });
+    expect(result.result.exit_code).toBe(0);
+    expect(result.session.status).toBe("completed");
+    expect(result.cleanup).toBe("deleted");
+    expect(provider.createCalls.at(-1)?.envVars).toEqual({ APP_ENV: "preview" });
+    expect(provider.uploadDirCalls.at(-1)).toEqual({
+      sandboxId: "provider-sandbox-1",
+      localDir: "/local/testers",
+      remoteDir: "/workspace/testers",
+      opts: { exclude: ["node_modules", ".git"] },
+    });
+    expect(provider.execCalls.at(-1)).toEqual({
+      sandboxId: "provider-sandbox-1",
+      command: "bun test --filter workflow",
+      opts: {
+        cwd: "/workspace/testers",
+        env: {
+          APP_ENV: "preview",
+          TESTERS_DB_PATH: ":memory:",
+        },
+        timeout: 120000,
+        onStdout: expect.any(Function),
+        onStderr: expect.any(Function),
+      },
+    });
+    expect(stdout).toEqual(["stdout:bun test --filter workflow"]);
+    expect(stderr).toEqual(["stderr:bun test --filter workflow"]);
+    expect(provider.deleted).toEqual(["provider-sandbox-1"]);
+    expect(sdk.listSandboxes()).toHaveLength(0);
+  });
+
+  it("keeps one-shot sandbox command sandboxes when cleanup is keep", async () => {
+    const provider = new FakeProvider();
+    const sdk = new SandboxesSDK({
+      defaultProvider: "daytona",
+      providerFactory: async () => provider,
+    });
+
+    const result = await sdk.runCommandInSandbox({
+      command: "bun test",
+      upload: {
+        localDir: "/local/testers",
+        remoteDir: "/workspace/testers",
+      },
+      cleanup: "keep",
+    });
+
+    expect(result.cleanup).toBe("kept");
+    expect(provider.deleted).toEqual([]);
+    expect(provider.stopped).toEqual([]);
+    expect(sdk.listSandboxes()).toHaveLength(1);
+  });
+
   it("runs custom agent commands and waits for sessions", async () => {
     const provider = new FakeProvider();
     const sdk = new SandboxesSDK({

@@ -55,6 +55,41 @@ export interface ExecCommandResult {
   result: ExecResult;
 }
 
+export type OneShotSandboxCleanup = "delete" | "stop" | "keep";
+
+export interface RunCommandInSandboxUploadOptions {
+  localDir: string;
+  remoteDir: string;
+  exclude?: string[];
+}
+
+export interface RunCommandInSandboxOptions {
+  command: string;
+  provider?: SandboxProviderName;
+  name?: string;
+  image?: string;
+  sandboxTimeout?: number;
+  commandTimeoutMs?: number;
+  projectId?: string;
+  config?: Record<string, unknown>;
+  sandboxEnvVars?: Record<string, string>;
+  callEnvVars?: Record<string, string>;
+  cwd?: string;
+  upload?: RunCommandInSandboxUploadOptions;
+  cleanup?: OneShotSandboxCleanup;
+  onStdout?: (data: string) => void;
+  onStderr?: (data: string) => void;
+}
+
+export interface RunCommandInSandboxResult {
+  sandbox: Sandbox;
+  session: SandboxSession;
+  result: ExecResult;
+  upload?: UploadDirResult;
+  remoteDir?: string;
+  cleanup: "deleted" | "stopped" | "kept";
+}
+
 export interface RunAgentOptions {
   agentType: AgentType;
   prompt: string;
@@ -256,6 +291,67 @@ export class SandboxesSDK {
       `uploaded ${localDir} -> ${remoteDir} (${result.bytes} bytes)`
     );
     return result;
+  }
+
+  async runCommandInSandbox(
+    input: RunCommandInSandboxOptions
+  ): Promise<RunCommandInSandboxResult> {
+    const cleanupMode = input.cleanup ?? "delete";
+    const sandbox = await this.createSandbox({
+      provider: input.provider,
+      name: input.name,
+      image: input.image,
+      timeout: input.sandboxTimeout,
+      env_vars: input.sandboxEnvVars,
+      config: input.config,
+      project_id: input.projectId,
+    });
+
+    let upload: UploadDirResult | undefined;
+    let exec: ExecCommandResult | undefined;
+
+    try {
+      if (input.upload) {
+        upload = await this.uploadDir(
+          sandbox.id,
+          input.upload.localDir,
+          input.upload.remoteDir,
+          { exclude: input.upload.exclude }
+        );
+      }
+
+      exec = await this.execCommand(sandbox.id, input.command, {
+        cwd: input.cwd ?? input.upload?.remoteDir,
+        env: input.callEnvVars,
+        timeout: input.commandTimeoutMs,
+        onStdout: input.onStdout,
+        onStderr: input.onStderr,
+      });
+    } finally {
+      if (cleanupMode === "delete") {
+        await this.deleteSandbox(sandbox.id);
+      } else if (cleanupMode === "stop") {
+        await this.stopSandbox(sandbox.id);
+      }
+    }
+
+    if (!exec) {
+      throw new Error("Sandbox command did not produce an execution result");
+    }
+
+    return {
+      sandbox,
+      session: exec.session,
+      result: exec.result,
+      upload,
+      remoteDir: input.upload?.remoteDir,
+      cleanup:
+        cleanupMode === "delete"
+          ? "deleted"
+          : cleanupMode === "stop"
+            ? "stopped"
+            : "kept",
+    };
   }
 
   async runAgent(

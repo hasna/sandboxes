@@ -33,7 +33,11 @@ export type {
   ExecCommandResult,
   ProviderFactory,
   RunAgentOptions,
+  RunCommandInSandboxOptions,
+  RunCommandInSandboxResult,
+  RunCommandInSandboxUploadOptions,
   SandboxesSDKOptions,
+  OneShotSandboxCleanup,
   WaitForSessionOptions,
 } from "./sdk.js";
 
