@@ -70,6 +70,16 @@ describe("tarDirectory", () => {
     expect(existsSync(join(outDir, ".git", "config"))).toBe(true);
   });
 
+  it("can stage the upload payload with rsync before archiving", async () => {
+    const buf = await tarDirectory(srcDir, { syncStrategy: "rsync" });
+    await extract(buf, outDir);
+
+    expect(existsSync(join(outDir, "src", "index.ts"))).toBe(true);
+    expect(existsSync(join(outDir, "package.json"))).toBe(true);
+    expect(existsSync(join(outDir, "node_modules"))).toBe(false);
+    expect(existsSync(join(outDir, ".git"))).toBe(false);
+  });
+
   it("throws on a non-existent directory", async () => {
     await expect(tarDirectory(join(srcDir, "does-not-exist"))).rejects.toThrow(
       /not a directory/

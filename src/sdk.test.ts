@@ -355,6 +355,7 @@ describe("SandboxesSDK", () => {
         localDir: "/local/testers",
         remoteDir: "/workspace/testers",
         exclude: ["node_modules", ".git"],
+        syncStrategy: "rsync",
       },
       cwd: "/workspace/testers",
       sandboxEnvVars: { APP_ENV: "preview" },
@@ -375,7 +376,7 @@ describe("SandboxesSDK", () => {
       sandboxId: "provider-sandbox-1",
       localDir: "/local/testers",
       remoteDir: "/workspace/testers",
-      opts: { exclude: ["node_modules", ".git"] },
+      opts: { exclude: ["node_modules", ".git"], syncStrategy: "rsync" },
     });
     expect(provider.execCalls.at(-1)).toEqual({
       sandboxId: "provider-sandbox-1",

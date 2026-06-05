@@ -1,10 +1,10 @@
 {
   "name": "@hasna/sandboxes",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "author": "Andrei Hasna <andrei@hasna.com>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hasna/sandboxes.git"
+    "url": "git+https://github.com/hasna/sandboxes.git"
   },
   "main": "dist/index.js",
   "dependencies": {

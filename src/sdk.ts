@@ -61,6 +61,7 @@ export interface RunCommandInSandboxUploadOptions {
   localDir: string;
   remoteDir: string;
   exclude?: string[];
+  syncStrategy?: "archive" | "rsync";
 }
 
 export interface RunCommandInSandboxOptions {
@@ -312,11 +313,14 @@ export class SandboxesSDK {
 
     try {
       if (input.upload) {
+        const uploadOptions: UploadDirOptions = {};
+        if (input.upload.exclude !== undefined) uploadOptions.exclude = input.upload.exclude;
+        if (input.upload.syncStrategy !== undefined) uploadOptions.syncStrategy = input.upload.syncStrategy;
         upload = await this.uploadDir(
           sandbox.id,
           input.upload.localDir,
           input.upload.remoteDir,
-          { exclude: input.upload.exclude }
+          uploadOptions
         );
       }
 

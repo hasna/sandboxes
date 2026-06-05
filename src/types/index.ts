@@ -236,6 +236,12 @@ export interface FileInfo {
 export interface UploadDirOptions {
   /** Patterns to exclude (passed to `tar --exclude`); defaults applied by the archiver. */
   exclude?: string[];
+  /**
+   * How to prepare the upload payload. `archive` tars the source directory
+   * directly; `rsync` first mirrors the source into a temporary staging
+   * directory with rsync, then uploads the staged tree.
+   */
+  syncStrategy?: "archive" | "rsync";
 }
 
 export interface UploadDirResult {

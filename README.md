@@ -17,6 +17,29 @@ npm install -g @hasna/sandboxes
 sandboxes --help
 ```
 
+## SDK One-shot Commands
+
+Use the SDK to create a sandbox, upload a local project, run a command, and clean up:
+
+```ts
+import { createSandboxesSDK } from "@hasna/sandboxes";
+
+const sandboxes = createSandboxesSDK();
+
+await sandboxes.runCommandInSandbox({
+  provider: "e2b",
+  command: "bun test",
+  upload: {
+    localDir: process.cwd(),
+    remoteDir: "/workspace/app",
+    syncStrategy: "rsync",
+  },
+  cleanup: "delete",
+});
+```
+
+Set `E2B_API_KEY` for E2B-backed runs. `syncStrategy: "rsync"` mirrors the local directory into a temporary staging tree with `rsync` before uploading it through the provider file APIs.
+
 ## MCP Server
 
 ```bash

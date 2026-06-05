@@ -1,4 +1,6 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * Directories that are almost never worth shipping into a sandbox and that
@@ -23,6 +25,8 @@ export interface TarDirectoryOptions {
    * {@link DEFAULT_UPLOAD_EXCLUDES}; pass `[]` to include everything.
    */
   exclude?: string[];
+  /** Prepare a temporary upload tree with rsync before creating the archive. */
+  syncStrategy?: "archive" | "rsync";
 }
 
 /** Single-quote a value for safe POSIX shell interpolation. */
@@ -46,6 +50,16 @@ export async function tarDirectory(
     throw new Error(`tarDirectory: not a directory: ${localDir}`);
   }
 
+  if (opts?.syncStrategy === "rsync") {
+    const stagingDir = mkdtempSync(join(tmpdir(), "sandboxes-rsync-"));
+    try {
+      await rsyncDirectory(localDir, stagingDir, opts.exclude ?? DEFAULT_UPLOAD_EXCLUDES);
+      return await tarDirectory(stagingDir, { exclude: [], syncStrategy: "archive" });
+    } finally {
+      rmSync(stagingDir, { recursive: true, force: true });
+    }
+  }
+
   const excludes = opts?.exclude ?? DEFAULT_UPLOAD_EXCLUDES;
   const args = ["-czf", "-"];
   for (const ex of excludes) args.push(`--exclude=${ex}`);
@@ -63,6 +77,29 @@ export async function tarDirectory(
   }
 
   return Buffer.from(buf);
+}
+
+async function rsyncDirectory(
+  localDir: string,
+  stagingDir: string,
+  excludes: string[],
+): Promise<void> {
+  const args = [
+    "-a",
+    "--delete",
+    ...excludes.flatMap((ex) => ["--exclude", ex]),
+    `${localDir.replace(/\/+$/, "")}/`,
+    `${stagingDir.replace(/\/+$/, "")}/`,
+  ];
+  const proc = Bun.spawn(["rsync", ...args], { stdout: "pipe", stderr: "pipe" });
+  const [stderr, exitCode] = await Promise.all([
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    throw new Error(`rsyncDirectory: rsync exited ${exitCode}: ${stderr.trim()}`);
+  }
 }
 
 /**
