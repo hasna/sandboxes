@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
+import { registerEventsCommands } from "@hasna/events/commander";
 import chalk from "chalk";
 
 import {
@@ -102,6 +103,8 @@ const program = new Command()
   .name("sandboxes")
   .description("Universal cloud sandbox manager for AI coding agents")
   .version(getPackageVersion());
+
+registerEventsCommands(program, { source: "sandboxes" });
 
 // ── create ───────────────────────────────────────────────────────────
 
