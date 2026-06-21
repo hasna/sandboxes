@@ -97,7 +97,29 @@ describe("shellQuote", () => {
 describe("buildUntarCommand", () => {
   it("builds a mkdir + extract + cleanup command with quoted paths", () => {
     expect(buildUntarCommand("/tmp/up.tar.gz", "/workspace")).toBe(
-      "mkdir -p '/workspace' && tar -xzf '/tmp/up.tar.gz' -C '/workspace' && rm -f '/tmp/up.tar.gz'"
+      "mkdir -p -- '/workspace' && tar -xzf '/tmp/up.tar.gz' -C '/workspace' && rm -f -- '/tmp/up.tar.gz'"
     );
+  });
+
+  it("treats leading-dash relative paths as filenames, not options", async () => {
+    const archive = await tarDirectory(srcDir, { exclude: [] });
+    writeFileSync(join(outDir, "-payload.tar.gz"), archive);
+
+    const proc = Bun.spawn(
+      ["sh", "-c", buildUntarCommand("-payload.tar.gz", "-dest")],
+      {
+        cwd: outDir,
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    const [stderr, exitCode] = await Promise.all([
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode, stderr).toBe(0);
+    expect(existsSync(join(outDir, "-dest", "src", "index.ts"))).toBe(true);
+    expect(existsSync(join(outDir, "-payload.tar.gz"))).toBe(false);
   });
 });

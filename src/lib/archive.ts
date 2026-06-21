@@ -110,5 +110,5 @@ async function rsyncDirectory(
 export function buildUntarCommand(remoteTarPath: string, remoteDir: string): string {
   const tar = shellQuote(remoteTarPath);
   const dir = shellQuote(remoteDir);
-  return `mkdir -p ${dir} && tar -xzf ${tar} -C ${dir} && rm -f ${tar}`;
+  return `mkdir -p -- ${dir} && tar -xzf ${tar} -C ${dir} && rm -f -- ${tar}`;
 }
