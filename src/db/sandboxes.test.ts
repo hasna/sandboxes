@@ -82,6 +82,18 @@ describe("listSandboxes", () => {
     expect(list).toHaveLength(2);
   });
 
+  it("orders same-second sandboxes newest first", () => {
+    const first = createSandbox({ name: "first" });
+    const second = createSandbox({ name: "second" });
+
+    getDatabase()
+      .query("UPDATE sandboxes SET created_at = ?")
+      .run("2026-01-01 00:00:00");
+
+    const list = listSandboxes();
+    expect(list.map((sandbox) => sandbox.id)).toEqual([second.id, first.id]);
+  });
+
   it("filters by status", () => {
     const sb = createSandbox({});
     updateSandbox(sb.id, { status: "running" });

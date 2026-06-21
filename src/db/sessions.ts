@@ -68,7 +68,7 @@ export function listSessions(opts?: {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = db
-    .query(`SELECT * FROM sandbox_sessions ${where} ORDER BY started_at DESC`)
+    .query(`SELECT * FROM sandbox_sessions ${where} ORDER BY started_at DESC, rowid DESC`)
     .all(...(params as string[])) as SandboxSessionRow[];
 
   return rows.map(rowToSession);

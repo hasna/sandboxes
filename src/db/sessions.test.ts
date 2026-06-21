@@ -97,6 +97,18 @@ describe("listSessions", () => {
     const all = listSessions();
     expect(all).toHaveLength(2);
   });
+
+  it("orders same-second sessions newest first", () => {
+    const first = createSession({ sandbox_id: sandboxId, command: "first" });
+    const second = createSession({ sandbox_id: sandboxId, command: "second" });
+
+    getDatabase()
+      .query("UPDATE sandbox_sessions SET started_at = ?")
+      .run("2026-01-01 00:00:00");
+
+    const all = listSessions();
+    expect(all.map((session) => session.id)).toEqual([second.id, first.id]);
+  });
 });
 
 describe("updateSession", () => {

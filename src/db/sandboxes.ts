@@ -113,7 +113,7 @@ export function listSandboxes(opts?: {
 
   const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
   const rows = db
-    .query(`SELECT * FROM sandboxes${where} ORDER BY created_at DESC`)
+    .query(`SELECT * FROM sandboxes${where} ORDER BY created_at DESC, rowid DESC`)
     .all(...(params as string[])) as SandboxRow[];
 
   return rows.map(rowToSandbox);
