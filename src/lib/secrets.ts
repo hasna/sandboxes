@@ -12,6 +12,16 @@ export interface SecretMapping {
   key: string;
 }
 
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function assertValidEnvName(env: string): void {
+  if (!ENV_NAME_PATTERN.test(env)) {
+    throw new Error(
+      `Invalid secret mapping env ${JSON.stringify(env)} (expected a valid environment variable name matching ${ENV_NAME_PATTERN})`
+    );
+  }
+}
+
 /** Parse an `ENV_NAME=vault/key` spec into a {@link SecretMapping}. */
 export function parseSecretMapping(spec: string): SecretMapping {
   const idx = spec.indexOf("=");
@@ -23,6 +33,7 @@ export function parseSecretMapping(spec: string): SecretMapping {
   if (!env || !key) {
     throw new Error(`Invalid secret mapping "${spec}" (expected ENV_NAME=vault/key)`);
   }
+  assertValidEnvName(env);
   return { env, key };
 }
 
@@ -54,6 +65,7 @@ export async function resolveSecretEnv(
 ): Promise<Record<string, string>> {
   const env: Record<string, string> = {};
   for (const mapping of mappings) {
+    assertValidEnvName(mapping.env);
     env[mapping.env] = await resolver(mapping.key);
   }
   return env;

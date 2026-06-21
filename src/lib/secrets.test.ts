@@ -23,6 +23,17 @@ describe("parseSecretMapping", () => {
     expect(() => parseSecretMapping("=onlykey")).toThrow();
     expect(() => parseSecretMapping("ONLYENV=")).toThrow();
   });
+
+  it("rejects invalid environment variable names", () => {
+    for (const spec of [
+      "1TOKEN=hasnaxyz/token",
+      "TOKEN-NAME=hasnaxyz/token",
+      "TOKEN.NAME=hasnaxyz/token",
+      "TOKEN NAME=hasnaxyz/token",
+    ]) {
+      expect(() => parseSecretMapping(spec)).toThrow(/valid environment variable name/);
+    }
+  });
 });
 
 describe("resolveSecretEnv", () => {
@@ -58,6 +69,19 @@ describe("resolveSecretEnv", () => {
     await expect(
       resolveSecretEnv([{ env: "X", key: "missing/key" }], resolver)
     ).rejects.toThrow(/secrets get failed/);
+  });
+
+  it("rejects invalid direct mappings before resolving secrets", async () => {
+    let calls = 0;
+    const resolver: SecretResolver = async () => {
+      calls += 1;
+      return "secret-value";
+    };
+
+    await expect(
+      resolveSecretEnv([{ env: "TOKEN-NAME", key: "hasnaxyz/token" }], resolver)
+    ).rejects.toThrow(/valid environment variable name/);
+    expect(calls).toBe(0);
   });
 });
 
