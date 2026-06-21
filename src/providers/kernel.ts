@@ -1,4 +1,5 @@
 import Kernel from "@onkernel/sdk";
+import { randomUUID } from "node:crypto";
 import { ProviderError } from "../types/index.js";
 import type { ExecHandle, ExecResult, FileInfo, UploadDirOptions, UploadDirResult } from "../types/index.js";
 import { buildUntarCommand, shellQuote, tarDirectory } from "../lib/archive.js";
@@ -17,10 +18,6 @@ const instanceCache = new Map<string, { id: string; status: string }>();
 function decodeBase64(value?: string): string {
   if (!value) return "";
   return Buffer.from(value, "base64").toString("utf8");
-}
-
-function toBase64(value: string): string {
-  return Buffer.from(value, "utf8").toString("base64");
 }
 
 function normalizeTimeoutSeconds(timeout?: number | null): number | undefined {
@@ -254,7 +251,7 @@ export class KernelProvider implements SandboxProvider {
   ): Promise<{ command: string }> {
     if (opts?.stdin === undefined) return { command };
 
-    const stdinPath = `/tmp/sandboxes-stdin-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const stdinPath = `/tmp/sandboxes-stdin-${Date.now()}-${randomUUID()}`;
     await this.client.browsers.fs.writeFile(sandboxId, opts.stdin, { path: stdinPath });
     return {
       command: `${command} < ${shellQuote(stdinPath)}; status=$?; rm -f ${shellQuote(stdinPath)}; exit "$status"`,
