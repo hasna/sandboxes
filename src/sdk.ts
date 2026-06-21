@@ -20,6 +20,7 @@ import {
   finalizeSandboxProvisionFailure,
   finalizeSessionExit,
   finalizeSessionFailure,
+  getErrorMessage,
 } from "./lib/runtime-state.js";
 import { getAgentDriver } from "./lib/agents/index.js";
 import { resolveSecretEnv } from "./lib/secrets.js";
@@ -91,6 +92,43 @@ export interface RunCommandInSandboxResult {
   cleanup: "deleted" | "stopped" | "kept";
 }
 
+interface OneShotSandboxCleanupErrorContext {
+  sandbox: Sandbox;
+  session?: SandboxSession;
+  result?: ExecResult;
+  upload?: UploadDirResult;
+}
+
+export class OneShotSandboxCleanupError extends Error {
+  readonly cleanupMode: OneShotSandboxCleanup;
+  readonly sandbox: Sandbox;
+  readonly session?: SandboxSession;
+  readonly result?: ExecResult;
+  readonly upload?: UploadDirResult;
+  readonly cleanupError: unknown;
+
+  constructor(
+    cleanupMode: OneShotSandboxCleanup,
+    cleanupError: unknown,
+    context: OneShotSandboxCleanupErrorContext
+  ) {
+    const exitContext = context.result
+      ? ` after command exited with code ${context.result.exit_code}`
+      : "";
+    super(
+      `one-shot sandbox cleanup ${cleanupMode} failed${exitContext}: ${getErrorMessage(cleanupError)}`,
+      { cause: cleanupError }
+    );
+    this.name = "OneShotSandboxCleanupError";
+    this.cleanupMode = cleanupMode;
+    this.sandbox = context.sandbox;
+    this.session = context.session;
+    this.result = context.result;
+    this.upload = context.upload;
+    this.cleanupError = cleanupError;
+  }
+}
+
 export interface RunAgentOptions {
   agentType: AgentType;
   prompt: string;
@@ -120,6 +158,24 @@ function mergeEnv(
 ): Record<string, string> | undefined {
   const merged = { ...sandboxEnv, ...callEnv };
   return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function emitOneShotCleanupFailure(
+  sandboxId: string,
+  cleanupMode: OneShotSandboxCleanup,
+  result?: ExecResult
+): void {
+  const context = result
+    ? ` after command exited with code ${result.exit_code}`
+    : " after command error";
+  try {
+    emitLifecycleEvent(
+      sandboxId,
+      `one-shot sandbox cleanup ${cleanupMode} failed${context}`
+    );
+  } catch {
+    // Keep the original one-shot failure from being replaced by event logging.
+  }
 }
 
 export class SandboxesSDK {
@@ -310,6 +366,7 @@ export class SandboxesSDK {
 
     let upload: UploadDirResult | undefined;
     let exec: ExecCommandResult | undefined;
+    let hasPrimaryError = false;
 
     try {
       if (input.upload) {
@@ -331,11 +388,30 @@ export class SandboxesSDK {
         onStdout: input.onStdout,
         onStderr: input.onStderr,
       });
+    } catch (error) {
+      hasPrimaryError = true;
+      throw error;
     } finally {
-      if (cleanupMode === "delete") {
-        await this.deleteSandbox(sandbox.id);
-      } else if (cleanupMode === "stop") {
-        await this.stopSandbox(sandbox.id);
+      try {
+        if (cleanupMode === "delete") {
+          await this.deleteSandbox(sandbox.id);
+        } else if (cleanupMode === "stop") {
+          await this.stopSandbox(sandbox.id);
+        }
+      } catch (cleanupError) {
+        if (hasPrimaryError) {
+          emitOneShotCleanupFailure(sandbox.id, cleanupMode);
+        } else if (exec?.result.exit_code !== undefined && exec.result.exit_code !== 0) {
+          emitOneShotCleanupFailure(sandbox.id, cleanupMode, exec.result);
+          throw new OneShotSandboxCleanupError(cleanupMode, cleanupError, {
+            sandbox,
+            session: exec.session,
+            result: exec.result,
+            upload,
+          });
+        } else {
+          throw cleanupError;
+        }
       }
     }
 

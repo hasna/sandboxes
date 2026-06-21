@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { closeDatabase, getDatabase, resetDatabase } from "./db/database.js";
-import { SandboxesSDK } from "./index.js";
+import { OneShotSandboxCleanupError, SandboxesSDK } from "./index.js";
 import type {
   ExecHandle,
   ExecResult,
@@ -18,6 +18,10 @@ import type {
 
 class FakeProvider implements SandboxProvider {
   readonly name = "daytona";
+  failUploadDir = false;
+  uploadDirError: unknown;
+  execResult?: ExecResult;
+  deleteError?: Error;
   readonly createCalls: CreateSandboxOpts[] = [];
   readonly files = new Map<string, string>();
   readonly deleted: string[] = [];
@@ -82,6 +86,10 @@ class FakeProvider implements SandboxProvider {
       };
     }
 
+    if (this.execResult) {
+      return this.execResult;
+    }
+
     return {
       exit_code: command.includes("fail") ? 1 : 0,
       stdout: `stdout:${command}`,
@@ -129,6 +137,9 @@ class FakeProvider implements SandboxProvider {
     opts?: UploadDirOptions
   ): Promise<UploadDirResult> {
     this.uploadDirCalls.push({ sandboxId, localDir, remoteDir, opts });
+    if (this.failUploadDir) {
+      throw this.uploadDirError;
+    }
     return { bytes: 42 };
   }
 
@@ -138,6 +149,9 @@ class FakeProvider implements SandboxProvider {
 
   async delete(sandboxId: string): Promise<void> {
     this.deleted.push(sandboxId);
+    if (this.deleteError) {
+      throw this.deleteError;
+    }
   }
 
   async keepAlive(_sandboxId: string, _durationMs?: number): Promise<void> {}
@@ -418,6 +432,117 @@ describe("SandboxesSDK", () => {
     expect(provider.deleted).toEqual([]);
     expect(provider.stopped).toEqual([]);
     expect(sdk.listSandboxes()).toHaveLength(1);
+  });
+
+  it("preserves one-shot setup failures when cleanup also fails", async () => {
+    const provider = new FakeProvider();
+    provider.failUploadDir = true;
+    provider.uploadDirError = new Error("upload failed");
+    provider.deleteError = new Error("delete failed");
+    const sdk = new SandboxesSDK({
+      defaultProvider: "daytona",
+      providerFactory: async () => provider,
+    });
+
+    await expect(
+      sdk.runCommandInSandbox({
+        command: "bun test",
+        upload: {
+          localDir: "/local/testers",
+          remoteDir: "/workspace/testers",
+        },
+        cleanup: "delete",
+      })
+    ).rejects.toThrow(/upload failed/);
+
+    expect(provider.deleted).toEqual(["provider-sandbox-1"]);
+    const lifecycleEvents = sdk
+      .listEvents({ type: "lifecycle" })
+      .map((event) => event.data);
+    expect(lifecycleEvents).toContain(
+      "one-shot sandbox cleanup delete failed after command error"
+    );
+  });
+
+  it("preserves undefined one-shot setup rejections when cleanup also fails", async () => {
+    const provider = new FakeProvider();
+    provider.failUploadDir = true;
+    provider.uploadDirError = undefined;
+    provider.deleteError = new Error("delete failed");
+    const sdk = new SandboxesSDK({
+      defaultProvider: "daytona",
+      providerFactory: async () => provider,
+    });
+
+    let caught: unknown = "not caught";
+    try {
+      await sdk.runCommandInSandbox({
+        command: "bun test",
+        upload: {
+          localDir: "/local/testers",
+          remoteDir: "/workspace/testers",
+        },
+        cleanup: "delete",
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeUndefined();
+    const lifecycleEvents = sdk
+      .listEvents({ type: "lifecycle" })
+      .map((event) => event.data);
+    expect(lifecycleEvents).toContain(
+      "one-shot sandbox cleanup delete failed after command error"
+    );
+  });
+
+  it("keeps failed command results inspectable when cleanup also fails", async () => {
+    const provider = new FakeProvider();
+    provider.execResult = {
+      exit_code: 17,
+      stdout: "test failure stdout",
+      stderr: "test failure stderr",
+    };
+    provider.deleteError = new Error("delete failed");
+    const sdk = new SandboxesSDK({
+      defaultProvider: "daytona",
+      providerFactory: async () => provider,
+    });
+
+    let caught: unknown;
+    try {
+      await sdk.runCommandInSandbox({
+        command: "bun test",
+        upload: {
+          localDir: "/local/testers",
+          remoteDir: "/workspace/testers",
+        },
+        cleanup: "delete",
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(OneShotSandboxCleanupError);
+    const cleanupError = caught as OneShotSandboxCleanupError;
+    expect(cleanupError.message).toBe(
+      "one-shot sandbox cleanup delete failed after command exited with code 17: delete failed"
+    );
+    expect(cleanupError.cleanupMode).toBe("delete");
+    expect(cleanupError.result).toEqual({
+      exit_code: 17,
+      stdout: "test failure stdout",
+      stderr: "test failure stderr",
+    });
+    expect(cleanupError.session?.status).toBe("failed");
+
+    const lifecycleEvents = sdk
+      .listEvents({ type: "lifecycle" })
+      .map((event) => event.data);
+    expect(lifecycleEvents).toContain(
+      "one-shot sandbox cleanup delete failed after command exited with code 17"
+    );
   });
 
   it("runs custom agent commands and waits for sessions", async () => {

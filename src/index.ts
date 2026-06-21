@@ -26,6 +26,7 @@ export type { SandboxProvider, ProviderSandbox, CreateSandboxOpts, ExecOptions }
 
 // SDK
 export {
+  OneShotSandboxCleanupError,
   SandboxesSDK,
   createSandboxesSDK,
 } from "./sdk.js";
