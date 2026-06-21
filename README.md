@@ -1,6 +1,6 @@
 # @hasna/sandboxes
 
-Universal cloud sandbox manager for AI coding agents - supports e2b, Daytona, Modal
+Universal cloud sandbox manager for AI coding agents - supports e2b, Daytona, Modal, and Kernel
 
 [![npm](https://img.shields.io/npm/v/@hasna/sandboxes)](https://www.npmjs.com/package/@hasna/sandboxes)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -39,6 +39,8 @@ await sandboxes.runCommandInSandbox({
 ```
 
 Set `E2B_API_KEY` for E2B-backed runs. `syncStrategy: "rsync"` mirrors the local directory into a temporary staging tree with `rsync` before uploading it through the provider file APIs.
+
+Use `provider: "kernel"` with `KERNEL_API_KEY` for Kernel browser sandboxes. Kernel runs command and file operations inside a browser session VM; container images, pause/resume, and public port forwarding are not supported by that provider.
 
 ## MCP Server
 

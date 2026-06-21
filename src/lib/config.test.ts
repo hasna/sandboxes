@@ -20,6 +20,7 @@ afterEach(() => {
   } catch { /* ignore */ }
   delete process.env["E2B_API_KEY"];
   delete process.env["DAYTONA_API_KEY"];
+  delete process.env["KERNEL_API_KEY"];
 });
 
 describe("config", () => {
@@ -49,10 +50,21 @@ describe("config", () => {
     expect(getProviderApiKey("e2b")).toBe("test-key-123");
   });
 
+  it("getProviderApiKey supports Kernel env var", () => {
+    process.env["KERNEL_API_KEY"] = "kernel-key-123";
+    expect(getProviderApiKey("kernel")).toBe("kernel-key-123");
+  });
+
   it("getProviderApiKey from config takes priority", () => {
     process.env["E2B_API_KEY"] = "env-key";
     saveConfig({ providers: { e2b: { api_key: "config-key" } } });
     expect(getProviderApiKey("e2b")).toBe("config-key");
+  });
+
+  it("getProviderApiKey supports Kernel config", () => {
+    process.env["KERNEL_API_KEY"] = "env-key";
+    saveConfig({ providers: { kernel: { api_key: "config-kernel-key" } } });
+    expect(getProviderApiKey("kernel")).toBe("config-kernel-key");
   });
 
   it("setConfigValue and getConfigValue", () => {

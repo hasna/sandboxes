@@ -80,7 +80,7 @@ const MIGRATIONS = [
 
   CREATE TABLE IF NOT EXISTS sandboxes (
     id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL CHECK(provider IN ('e2b', 'daytona', 'modal')),
+    provider TEXT NOT NULL CHECK(provider IN ('e2b', 'daytona', 'modal', 'kernel')),
     provider_sandbox_id TEXT,
     name TEXT,
     status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'running', 'paused', 'stopped', 'deleted', 'error')),
@@ -214,6 +214,78 @@ INSERT OR IGNORE INTO _migrations (id) VALUES (6);
   `
 ALTER TABLE agents ADD COLUMN active_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
 INSERT OR IGNORE INTO _migrations (id) VALUES (7);
+  `,
+
+  // Migration 8: Add Kernel as an allowed sandbox provider
+  `
+PRAGMA foreign_keys=OFF;
+CREATE TABLE IF NOT EXISTS sandboxes_new (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK(provider IN ('e2b', 'daytona', 'modal', 'kernel')),
+  provider_sandbox_id TEXT,
+  name TEXT,
+  status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'running', 'paused', 'stopped', 'deleted', 'error')),
+  image TEXT,
+  timeout INTEGER DEFAULT 3600,
+  config TEXT DEFAULT '{}',
+  env_vars TEXT DEFAULT '{}',
+  keep_alive_until TEXT,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  on_timeout TEXT NOT NULL DEFAULT 'terminate' CHECK(on_timeout IN ('pause', 'terminate')),
+  auto_resume INTEGER NOT NULL DEFAULT 0,
+  budget_limit_usd REAL,
+  on_budget_exceeded TEXT NOT NULL DEFAULT 'terminate' CHECK(on_budget_exceeded IN ('terminate', 'pause', 'notify')),
+  started_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT INTO sandboxes_new (
+  id,
+  provider,
+  provider_sandbox_id,
+  name,
+  status,
+  image,
+  timeout,
+  config,
+  env_vars,
+  keep_alive_until,
+  project_id,
+  on_timeout,
+  auto_resume,
+  budget_limit_usd,
+  on_budget_exceeded,
+  started_at,
+  created_at,
+  updated_at
+)
+SELECT
+  id,
+  provider,
+  provider_sandbox_id,
+  name,
+  status,
+  image,
+  timeout,
+  config,
+  env_vars,
+  keep_alive_until,
+  project_id,
+  on_timeout,
+  auto_resume,
+  budget_limit_usd,
+  on_budget_exceeded,
+  started_at,
+  created_at,
+  updated_at
+FROM sandboxes;
+DROP TABLE sandboxes;
+ALTER TABLE sandboxes_new RENAME TO sandboxes;
+CREATE INDEX IF NOT EXISTS idx_sandboxes_status ON sandboxes(status);
+CREATE INDEX IF NOT EXISTS idx_sandboxes_provider ON sandboxes(provider);
+CREATE INDEX IF NOT EXISTS idx_sandboxes_project ON sandboxes(project_id);
+PRAGMA foreign_keys=ON;
+INSERT OR IGNORE INTO _migrations (id) VALUES (8);
   `,
 ];
 

@@ -6,6 +6,7 @@ const ENV_KEYS: Record<SandboxProviderName, string> = {
   e2b: "E2B_API_KEY",
   daytona: "DAYTONA_API_KEY",
   modal: "MODAL_TOKEN_ID",
+  kernel: "KERNEL_API_KEY",
 };
 
 function getConfigPath(): string {

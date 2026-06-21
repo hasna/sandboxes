@@ -30,7 +30,7 @@ export const PG_MIGRATIONS: string[] = [
   // Migration 3: sandboxes
   `CREATE TABLE IF NOT EXISTS sandboxes (
     id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL CHECK(provider IN ('e2b', 'daytona', 'modal')),
+    provider TEXT NOT NULL CHECK(provider IN ('e2b', 'daytona', 'modal', 'kernel')),
     provider_sandbox_id TEXT,
     name TEXT,
     status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'running', 'paused', 'stopped', 'deleted', 'error')),
@@ -142,4 +142,8 @@ export const PG_MIGRATIONS: string[] = [
 
   // Migration 12: agent focus
   `ALTER TABLE agents ADD COLUMN IF NOT EXISTS active_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL`,
+
+  // Migration 13: Add Kernel as an allowed sandbox provider
+  `ALTER TABLE sandboxes DROP CONSTRAINT IF EXISTS sandboxes_provider_check`,
+  `ALTER TABLE sandboxes ADD CONSTRAINT sandboxes_provider_check CHECK(provider IN ('e2b', 'daytona', 'modal', 'kernel'))`,
 ];

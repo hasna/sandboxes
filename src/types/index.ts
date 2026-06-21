@@ -1,6 +1,6 @@
 // ── Constants ──────────────────────────────────────────────────────────
 
-export const SANDBOX_PROVIDERS = ["e2b", "daytona", "modal"] as const;
+export const SANDBOX_PROVIDERS = ["e2b", "daytona", "modal", "kernel"] as const;
 export type SandboxProviderName = (typeof SANDBOX_PROVIDERS)[number];
 
 export const SANDBOX_STATUSES = [
@@ -259,6 +259,7 @@ export interface SandboxesConfig {
     e2b?: { api_key?: string };
     daytona?: { api_key?: string; target?: string };
     modal?: { api_key?: string };
+    kernel?: { api_key?: string };
   };
 }
 

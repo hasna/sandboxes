@@ -111,7 +111,7 @@ registerEventsCommands(program, { source: "sandboxes" });
 program
   .command("create")
   .description("Create a new sandbox")
-  .option("-p, --provider <provider>", "Provider (e2b, daytona, modal)")
+  .option("-p, --provider <provider>", "Provider (e2b, daytona, modal, kernel)")
   .option("-i, --image <image>", "Container image")
   .option("-t, --timeout <seconds>", "Timeout in seconds")
   .option("-n, --name <name>", "Sandbox name")

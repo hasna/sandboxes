@@ -39,6 +39,12 @@ export async function getProvider(
       }
       break;
     }
+    case "kernel": {
+      if (!key) throw new ProviderError("kernel", "API key required. Set KERNEL_API_KEY or configure via `sandboxes config set providers.kernel.api_key <key>`");
+      const { KernelProvider } = await import("./kernel.js");
+      provider = new KernelProvider(key);
+      break;
+    }
     default:
       throw new ProviderError(name, `Unknown provider: ${name}`);
   }

@@ -30,16 +30,21 @@ import {
 } from "../lib/runtime-state.js";
 import { resolveImage, getBuiltinImageSetupScript, BUILTIN_IMAGES } from "../lib/images.js";
 import { getPackageVersion } from "../lib/version.js";
-import type { ExecResult, AgentType } from "../types/index.js";
+import type { ExecResult, AgentType, SandboxProviderName } from "../types/index.js";
 
 // ── Cost constants ────────────────────────────────────────────────────
 const E2B_COST_PER_SECOND = 0.000014;
 const DAYTONA_COST_PER_SECOND = 0.000010;
+const KERNEL_COST_PER_SECOND = 0;
 
 function estimateCost(providerName: string, startedAt: string | null): { compute_seconds: number; cost_usd: number } {
   if (!startedAt) return { compute_seconds: 0, cost_usd: 0 };
   const seconds = (Date.now() - new Date(startedAt).getTime()) / 1000;
-  const rate = providerName === 'daytona' ? DAYTONA_COST_PER_SECOND : E2B_COST_PER_SECOND;
+  const rate = providerName === "daytona"
+    ? DAYTONA_COST_PER_SECOND
+    : providerName === "kernel"
+      ? KERNEL_COST_PER_SECOND
+      : E2B_COST_PER_SECOND;
   return {
     compute_seconds: Math.round(seconds),
     cost_usd: Math.round(seconds * rate * 1000000) / 1000000,
@@ -117,7 +122,7 @@ server.tool(
   "create_sandbox",
   "Create a new sandbox",
   {
-    provider: z.string().optional().describe("Provider name (e2b, daytona, modal)"),
+    provider: z.string().optional().describe("Provider name (e2b, daytona, modal, kernel)"),
     image: z.string().optional().describe("Container image"),
     timeout: z.number().optional().describe("Timeout in seconds"),
     name: z.string().optional().describe("Sandbox name"),
@@ -133,7 +138,7 @@ server.tool(
   async (params) => {
     let sandboxId: string | undefined;
     try {
-      const providerName = (params.provider ?? getDefaultProvider()) as "e2b" | "daytona" | "modal";
+      const providerName = (params.provider ?? getDefaultProvider()) as SandboxProviderName;
       const timeout = params.timeout ?? getDefaultTimeout();
 
       // Load template if specified

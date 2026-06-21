@@ -98,6 +98,7 @@ describe("listSandboxes", () => {
   it("filters by provider", () => {
     createSandbox({ provider: "e2b" });
     createSandbox({ provider: "daytona" });
+    createSandbox({ provider: "kernel" });
     createSandbox({ provider: "e2b" });
 
     const e2b = listSandboxes({ provider: "e2b" });
@@ -105,6 +106,9 @@ describe("listSandboxes", () => {
 
     const daytona = listSandboxes({ provider: "daytona" });
     expect(daytona).toHaveLength(1);
+
+    const kernel = listSandboxes({ provider: "kernel" });
+    expect(kernel).toHaveLength(1);
   });
 
   it("returns empty array when no matches", () => {
