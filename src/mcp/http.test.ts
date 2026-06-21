@@ -3,6 +3,7 @@ import { type Server } from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { resetDatabase, getDatabase, closeDatabase } from "../db/database.js";
+import { getPackageVersion } from "../lib/version.js";
 import { buildServer, MCP_NAME } from "./server.js";
 import { handleMcpHttpRoutes, healthPayload, startMcpHttpServer } from "./http.js";
 
@@ -54,6 +55,37 @@ describe("MCP HTTP transport", () => {
     expect(result.content?.[0]?.type).toBe("text");
 
     await client.close();
+  });
+
+  it("send_feedback records the current package version", async () => {
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`http://127.0.0.1:${port}/mcp`),
+    );
+    const client = new Client({ name: "sandboxes-http-test", version: "1.0.0" });
+    await client.connect(transport);
+
+    const result = await client.callTool({
+      name: "send_feedback",
+      arguments: {
+        message: "version regression check",
+        email: "user@example.com",
+        category: "bug",
+      },
+    });
+
+    expect(result.isError).not.toBe(true);
+    await client.close();
+
+    const row = getDatabase()
+      .query("SELECT message, email, category, version FROM feedback")
+      .get() as { message: string; email: string; category: string; version: string };
+
+    expect(row).toEqual({
+      message: "version regression check",
+      email: "user@example.com",
+      category: "bug",
+      version: getPackageVersion(),
+    });
   });
 
   it("handleMcpHttpRoutes mounts /health for Bun.serve reuse", async () => {

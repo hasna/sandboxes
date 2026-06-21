@@ -1142,7 +1142,7 @@ server.tool(
   async (params) => {
     try {
       const db = getDatabase();
-      db.run("INSERT INTO feedback (message, email, category, version) VALUES (?, ?, ?, ?)", [params.message, params.email || null, params.category || "general", "0.1.17"]);
+      db.run("INSERT INTO feedback (message, email, category, version) VALUES (?, ?, ?, ?)", [params.message, params.email || null, params.category || "general", getPackageVersion()]);
       return ok("Feedback saved. Thank you!");
     } catch (e) { return err(e); }
   },
