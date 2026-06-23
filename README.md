@@ -67,6 +67,14 @@ MCP_HTTP=1 sandboxes-mcp
 sandboxes-serve
 ```
 
+Protected REST and mounted MCP routes require bearer auth. If
+`HASNA_SANDBOXES_SERVE_TOKEN` is not set, `sandboxes-serve` prints a one-time
+token at startup. Send API requests with `Authorization: Bearer <token>`.
+
+Browser CORS is disabled by default. Set
+`HASNA_SANDBOXES_SERVE_ALLOWED_ORIGINS` to a comma-separated list of exact
+origins when a browser client must call the local server.
+
 ## Cloud Sync
 
 This package supports cloud sync via `@hasna/cloud`:
