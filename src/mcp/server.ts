@@ -30,6 +30,26 @@ import {
 } from "../lib/runtime-state.js";
 import { resolveImage, getBuiltinImageSetupScript, BUILTIN_IMAGES } from "../lib/images.js";
 import { getPackageVersion } from "../lib/version.js";
+import {
+  DEFAULT_LIST_LIMIT,
+  DEFAULT_LOG_LIMIT,
+  DEFAULT_TEXT_LIMIT,
+  compactAgent,
+  compactEvent,
+  compactFile,
+  compactProject,
+  compactSandbox,
+  compactSession,
+  compactSnapshot,
+  compactTemplate,
+  pagedResponse,
+  parseLimit,
+  parseNonNegativeInt,
+  sandboxDetail,
+  truncateEncodedContent,
+  truncateText,
+  wasTruncated,
+} from "../lib/compact-output.js";
 import type { ExecResult, AgentType, SandboxProviderName } from "../types/index.js";
 
 // ── Cost constants ────────────────────────────────────────────────────
@@ -64,6 +84,25 @@ function err(error: unknown) {
   return {
     content: [{ type: "text" as const, text: `Error: ${(error as Error).message}` }],
     isError: true as const,
+  };
+}
+
+const listControls = {
+  limit: z.number().optional().describe(`Max items to return (default ${DEFAULT_LIST_LIMIT}, max 200)`),
+  cursor: z.number().optional().describe("Zero-based item offset for pagination"),
+  verbose: z.boolean().optional().describe("Return full records instead of compact summaries"),
+};
+
+const logControls = {
+  limit: z.number().optional().describe(`Max events to return (default ${DEFAULT_LOG_LIMIT}, max 200)`),
+  cursor: z.number().optional().describe("Zero-based event offset for pagination"),
+  verbose: z.boolean().optional().describe("Return untruncated event payloads"),
+};
+
+function truncateOutput(text: string, max = DEFAULT_TEXT_LIMIT) {
+  return {
+    text: truncateText(text, max),
+    truncated: wasTruncated(text, max),
   };
 }
 
@@ -181,7 +220,10 @@ server.tool(
           status: 'running',
         });
         emitLifecycleEvent(sandbox.id, `Sandbox restored from snapshot ${snapshot.id}`);
-        return ok(updated);
+        return ok({
+          ...compactSandbox(updated),
+          hint: "Use get_sandbox with verbose:true for env vars and full config.",
+        });
       }
 
       const result = await provider.create({
@@ -218,7 +260,10 @@ server.tool(
         }
       }
 
-      return ok(updated);
+      return ok({
+        ...compactSandbox(updated),
+        hint: "Use get_sandbox with verbose:true for env vars and full config.",
+      });
     } catch (e) {
       if (sandboxId) {
         finalizeSandboxProvisionFailure(sandboxId, e);
@@ -234,12 +279,13 @@ server.tool(
   "Get sandbox details by ID",
   {
     id: z.string().describe("Sandbox ID or partial ID"),
+    verbose: z.boolean().optional().describe("Return env var values and full config"),
   },
   async (params) => {
     try {
       const sandbox = getSandbox(params.id);
       const cost = estimateCost(sandbox.provider, sandbox.started_at);
-      return ok({ ...sandbox, ...cost });
+      return ok({ ...sandboxDetail(sandbox, { verbose: params.verbose }), ...cost });
     } catch (e) {
       return err(e);
     }
@@ -253,6 +299,7 @@ server.tool(
   {
     status: z.string().optional().describe("Filter by status"),
     provider: z.string().optional().describe("Filter by provider"),
+    ...listControls,
   },
   async (params) => {
     try {
@@ -260,7 +307,15 @@ server.tool(
         status: params.status as any,
         provider: params.provider as any,
       });
-      return ok(sandboxes.map((s) => ({ ...s, ...estimateCost(s.provider, s.started_at) })));
+      const items = sandboxes.map((s) => compactSandbox(s, {
+        verbose: params.verbose,
+        cost: estimateCost(s.provider, s.started_at),
+      }));
+      return ok(pagedResponse(items, {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use get_sandbox with an id for details, or verbose:true for full records.",
+      }));
     } catch (e) {
       return err(e);
     }
@@ -305,7 +360,7 @@ server.tool(
       await provider.stop(sandbox.provider_sandbox_id);
       const updated = updateSandbox(sandbox.id, { status: "stopped" });
       emitLifecycleEvent(sandbox.id, "sandbox stopped");
-      return ok(updated);
+      return ok(compactSandbox(updated));
     } catch (e) {
       return err(e);
     }
@@ -345,6 +400,7 @@ server.tool(
     env_vars: z.record(z.string()).optional().describe("Per-call environment variables (merged with sandbox env_vars, not persisted)"),
     stdin: z.string().optional().describe("String to pipe as stdin to the command"),
     tty: z.boolean().optional().describe("Allocate a TTY for the session (best-effort)"),
+    max_output_chars: z.number().optional().describe(`Max stdout/stderr characters to return per stream (default ${DEFAULT_TEXT_LIMIT})`),
   },
   async (params) => {
     let sessionId: string | undefined;
@@ -399,11 +455,18 @@ server.tool(
 
       const execResult = result as ExecResult;
       finalizeSessionExit(session.id, execResult.exit_code);
+      const stdout = truncateOutput(execResult.stdout, params.max_output_chars ?? DEFAULT_TEXT_LIMIT);
+      const stderr = truncateOutput(execResult.stderr, params.max_output_chars ?? DEFAULT_TEXT_LIMIT);
       return ok({
         session_id: session.id,
         exit_code: execResult.exit_code,
-        stdout: execResult.stdout,
-        stderr: execResult.stderr,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
+        hint: stdout.truncated || stderr.truncated
+          ? "Use get_logs or rerun with a higher max_output_chars for more output."
+          : undefined,
       });
     } catch (e) {
       if (sessionId) {
@@ -424,6 +487,7 @@ server.tool(
     offset: z.number().optional().describe("Line or byte offset to start reading from"),
     limit: z.number().optional().describe("Max lines or bytes to return"),
     encoding: z.enum(['utf8', 'base64', 'hex']).optional().describe("Output encoding (default: utf8)"),
+    max_content_chars: z.number().optional().describe(`Max returned content characters (default ${DEFAULT_TEXT_LIMIT})`),
   },
   async (params) => {
     try {
@@ -435,7 +499,15 @@ server.tool(
         offset: params.offset,
         limit: params.limit,
       });
-      return ok({ path: params.path, content, encoding: params.encoding ?? 'utf8' });
+      const encoding = params.encoding ?? "utf8";
+      const output = truncateEncodedContent(content, encoding, params.max_content_chars ?? DEFAULT_TEXT_LIMIT);
+      return ok({
+        path: params.path,
+        content: output.text,
+        encoding,
+        content_truncated: output.truncated,
+        hint: output.truncated ? "Pass limit/offset or a higher max_content_chars for more content." : undefined,
+      });
     } catch (e) {
       return err(e);
     }
@@ -473,6 +545,7 @@ server.tool(
     path: z.string().describe("Directory path"),
     recursive: z.boolean().optional().describe("List files recursively"),
     glob: z.string().optional().describe("Glob pattern to filter files"),
+    ...listControls,
   },
   async (params) => {
     try {
@@ -483,7 +556,11 @@ server.tool(
         recursive: params.recursive,
         glob: params.glob,
       });
-      return ok(files);
+      return ok(pagedResponse(files.map((file) => compactFile(file, { verbose: params.verbose })), {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use verbose:true for full paths.",
+      }));
     } catch (e) {
       return err(e);
     }
@@ -531,11 +608,12 @@ server.tool(
   "Get session details and exit code (useful for polling background command results)",
   {
     session_id: z.string().describe("Session ID"),
+    verbose: z.boolean().optional().describe("Return full session record"),
   },
   async (params) => {
     try {
       const session = getSession(params.session_id);
-      return ok(session);
+      return ok(params.verbose ? session : compactSession(session));
     } catch (e) {
       return err(e);
     }
@@ -550,6 +628,7 @@ server.tool(
     session_id: z.string().describe("Session ID from exec_command background:true response"),
     timeout_seconds: z.number().optional().describe("Max seconds to wait (default: 300)"),
     poll_interval_ms: z.number().optional().describe("Poll interval in ms (default: 1000)"),
+    max_output_chars: z.number().optional().describe(`Max stdout/stderr characters to return per stream (default ${DEFAULT_TEXT_LIMIT})`),
   },
   async (params) => {
     try {
@@ -563,12 +642,16 @@ server.tool(
           const events = listEvents({ session_id: session.id, limit: 10000 });
           const stdout = events.filter((e) => e.type === "stdout").map((e) => e.data).join("");
           const stderr = events.filter((e) => e.type === "stderr").map((e) => e.data).join("");
+          const stdoutOutput = truncateOutput(stdout, params.max_output_chars ?? DEFAULT_TEXT_LIMIT);
+          const stderrOutput = truncateOutput(stderr, params.max_output_chars ?? DEFAULT_TEXT_LIMIT);
           return ok({
             session_id: session.id,
             status: session.status,
             exit_code: session.exit_code ?? ((session.status === "failed" || session.status === "killed") ? 1 : 0),
-            stdout,
-            stderr,
+            stdout: stdoutOutput.text,
+            stderr: stderrOutput.text,
+            stdout_truncated: stdoutOutput.truncated,
+            stderr_truncated: stderrOutput.truncated,
           });
         }
         // Poll delay
@@ -588,17 +671,27 @@ server.tool(
   {
     sandbox_id: z.string().optional().describe("Filter by sandbox ID"),
     session_id: z.string().optional().describe("Filter by session ID"),
-    limit: z.number().optional().describe("Max events to return"),
+    ...logControls,
   },
   async (params) => {
     try {
-      return ok(
-        listEvents({
-          sandbox_id: params.sandbox_id,
-          session_id: params.session_id,
-          limit: params.limit,
-        }),
-      );
+      const limit = parseLimit(params.limit, DEFAULT_LOG_LIMIT);
+      const cursor = parseNonNegativeInt(params.cursor, 0);
+      const events = listEvents({
+        sandbox_id: params.sandbox_id,
+        session_id: params.session_id,
+        limit,
+        offset: cursor,
+      }).map((event) => compactEvent(event, { verbose: params.verbose }));
+      return ok({
+        items: events,
+        limit,
+        cursor,
+        next_cursor: events.length >= limit
+          ? cursor + events.length
+          : null,
+        hint: "Use cursor for more events, verbose:true for untruncated payloads.",
+      });
     } catch (e) {
       return err(e);
     }
@@ -615,7 +708,7 @@ server.tool(
   },
   async (params) => {
     try {
-      return ok(registerAgent({ name: params.name, description: params.description }));
+      return ok(compactAgent(registerAgent({ name: params.name, description: params.description })));
     } catch (e) {
       return err(e);
     }
@@ -626,10 +719,14 @@ server.tool(
 server.tool(
   "list_agents",
   "List all registered agents",
-  {},
-  async () => {
+  listControls,
+  async (params) => {
     try {
-      return ok(listAgents());
+      return ok(pagedResponse(listAgents().map((agent) => compactAgent(agent, { verbose: params.verbose })), {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use verbose:true for metadata and full descriptions.",
+      }));
     } catch (e) {
       return err(e);
     }
@@ -643,7 +740,7 @@ server.tool(
   { agent_id: z.string().describe("Agent ID or name") },
   async (params) => {
     try {
-      return ok(heartbeatAgent(params.agent_id));
+      return ok(compactAgent(heartbeatAgent(params.agent_id)));
     } catch (e) {
       return err(e);
     }
@@ -660,7 +757,7 @@ server.tool(
   },
   async (params) => {
     try {
-      return ok(setAgentFocus(params.agent_id, params.project_id ?? null));
+      return ok(compactAgent(setAgentFocus(params.agent_id, params.project_id ?? null)));
     } catch (e) {
       return err(e);
     }
@@ -678,7 +775,7 @@ server.tool(
   },
   async (params) => {
     try {
-      return ok(ensureProject(params.name, params.path, params.description));
+      return ok(compactProject(ensureProject(params.name, params.path, params.description)));
     } catch (e) {
       return err(e);
     }
@@ -689,10 +786,14 @@ server.tool(
 server.tool(
   "list_projects",
   "List all projects",
-  {},
-  async () => {
+  listControls,
+  async (params) => {
     try {
-      return ok(listProjects());
+      return ok(pagedResponse(listProjects().map((project) => compactProject(project, { verbose: params.verbose })), {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use verbose:true for full paths and descriptions.",
+      }));
     } catch (e) {
       return err(e);
     }
@@ -703,10 +804,14 @@ server.tool(
 server.tool(
   "describe_tools",
   "List all available tools",
-  {},
-  async () => {
+  listControls,
+  async (params) => {
     try {
-      return ok(TOOL_CATALOG);
+      return ok(pagedResponse(TOOL_CATALOG, {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use search_tools to find a specific capability.",
+      }));
     } catch (e) {
       return err(e);
     }
@@ -719,6 +824,7 @@ server.tool(
   "Search tools by keyword",
   {
     query: z.string().describe("Search query"),
+    ...listControls,
   },
   async (params) => {
     try {
@@ -726,7 +832,11 @@ server.tool(
       const matches = TOOL_CATALOG.filter(
         (t) => t.name.includes(q) || t.description.toLowerCase().includes(q),
       );
-      return ok(matches);
+      return ok(pagedResponse(matches, {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use describe_tools with cursor for the full catalog.",
+      }));
     } catch (e) {
       return err(e);
     }
@@ -796,16 +906,20 @@ server.tool(
   {
     sandbox_id: z.string().describe("Sandbox ID"),
     session_id: z.string().optional().describe("Session ID"),
-    limit: z.number().optional().describe("Max events"),
-    offset: z.number().optional().describe("Skip first N events (for incremental polling)"),
+    limit: z.number().optional().describe(`Max events (default ${DEFAULT_LOG_LIMIT}, max 200)`),
+    cursor: z.number().optional().describe("Skip first N events (for incremental polling)"),
+    offset: z.number().optional().describe("Deprecated alias for cursor"),
+    max_output_chars: z.number().optional().describe(`Max stdout/stderr characters to return per stream (default ${DEFAULT_TEXT_LIMIT})`),
   },
   async (params) => {
     try {
+      const limit = parseLimit(params.limit, DEFAULT_LOG_LIMIT);
+      const cursor = parseNonNegativeInt(params.cursor ?? params.offset, 0);
       const events = listEvents({
         sandbox_id: params.sandbox_id,
         session_id: params.session_id,
-        limit: params.limit || 100,
-        offset: params.offset,
+        limit,
+        offset: cursor,
       });
       const stdout = events
         .filter((e) => e.type === "stdout")
@@ -815,7 +929,19 @@ server.tool(
         .filter((e) => e.type === "stderr")
         .map((e) => e.data)
         .join("");
-      return ok({ stdout, stderr, event_count: events.length, next_offset: (params.offset ?? 0) + events.length });
+      const stdoutOutput = truncateOutput(stdout, params.max_output_chars ?? DEFAULT_TEXT_LIMIT);
+      const stderrOutput = truncateOutput(stderr, params.max_output_chars ?? DEFAULT_TEXT_LIMIT);
+      return ok({
+        stdout: stdoutOutput.text,
+        stderr: stderrOutput.text,
+        stdout_truncated: stdoutOutput.truncated,
+        stderr_truncated: stderrOutput.truncated,
+        limit,
+        event_count: events.length,
+        cursor,
+        next_cursor: cursor + events.length,
+        next_offset: cursor + events.length,
+      });
     } catch (e) {
       return err(e);
     }
@@ -837,7 +963,7 @@ server.tool(
       await provider.pause(sandbox.provider_sandbox_id);
       const updated = updateSandbox(sandbox.id, { status: "paused" });
       emitLifecycleEvent(sandbox.id, "sandbox paused");
-      return ok(updated);
+      return ok(compactSandbox(updated));
     } catch (e) { return err(e); }
   },
 );
@@ -857,7 +983,7 @@ server.tool(
       await provider.resume(sandbox.provider_sandbox_id);
       const updated = updateSandbox(sandbox.id, { status: "running" });
       emitLifecycleEvent(sandbox.id, "sandbox resumed");
-      return ok(updated);
+      return ok(compactSandbox(updated));
     } catch (e) { return err(e); }
   },
 );
@@ -875,7 +1001,7 @@ server.tool(
     tags: z.array(z.string()).optional(),
   },
   async (params) => {
-    try { return ok(createTemplate(params)); } catch (e) { return err(e); }
+    try { return ok(compactTemplate(createTemplate(params))); } catch (e) { return err(e); }
   },
 );
 
@@ -883,9 +1009,15 @@ server.tool(
 server.tool(
   "list_templates",
   "List all sandbox templates",
-  {},
-  async () => {
-    try { return ok(listTemplates()); } catch (e) { return err(e); }
+  listControls,
+  async (params) => {
+    try {
+      return ok(pagedResponse(listTemplates().map((template) => compactTemplate(template, { verbose: params.verbose })), {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use get_template for a full template, or verbose:true for setup scripts/env vars.",
+      }));
+    } catch (e) { return err(e); }
   },
 );
 
@@ -922,6 +1054,8 @@ server.tool(
   "Get running processes, disk usage and uptime in a sandbox",
   {
     sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+    verbose: z.boolean().optional().describe("Return full process command strings"),
+    limit: z.number().optional().describe("Max processes to return (default 15, max 200)"),
   },
   async (params) => {
     try {
@@ -949,10 +1083,16 @@ server.tool(
           };
         });
 
+      const processLimit = parseLimit(params.limit, 15);
       return ok({
         sandbox_id: sandbox.id,
         status: sandbox.status,
-        processes,
+        processes: processes.slice(0, processLimit).map((process) => ({
+          ...process,
+          command: params.verbose ? process.command : truncateText(process.command, 120),
+        })),
+        process_count: processes.length,
+        next_steps: processes.length > processLimit ? "Increase limit or use verbose:true for more process detail." : undefined,
         disk: ((dfResult as ExecResult).stdout || "").trim(),
         uptime: ((uptimeResult as ExecResult).stdout || "").trim(),
       });
@@ -995,9 +1135,19 @@ server.tool(
   "List filesystem snapshots",
   {
     sandbox_id: z.string().optional().describe("Filter by sandbox ID"),
+    ...listControls,
   },
   async (params) => {
-    try { return ok(listSnapshots(params.sandbox_id)); } catch (e) { return err(e); }
+    try {
+      const snapshots = listSnapshots(params.sandbox_id).map((snapshot) =>
+        params.verbose ? snapshot : compactSnapshot(snapshot)
+      );
+      return ok(pagedResponse(snapshots, {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use snapshot ids with delete_snapshot or restore-capable create_sandbox calls.",
+      }));
+    } catch (e) { return err(e); }
   },
 );
 
@@ -1044,13 +1194,18 @@ server.tool(
   "List all forwarded ports for a sandbox",
   {
     sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+    ...listControls,
   },
   async (params) => {
     try {
       const sandbox = getSandbox(params.sandbox_id);
       const ports = exposedPorts.get(sandbox.id) ?? new Map();
       const result = Array.from(ports.entries()).map(([port, url]) => ({ port, url }));
-      return ok(result);
+      return ok(pagedResponse(result, {
+        limit: params.limit,
+        cursor: params.cursor,
+        hint: "Use close_port with a port number to stop forwarding.",
+      }));
     } catch (e) { return err(e); }
   },
 );
@@ -1078,6 +1233,7 @@ server.tool(
   "Get outbound network connections from a sandbox",
   {
     sandbox_id: z.string().describe("Sandbox ID or partial ID"),
+    max_output_chars: z.number().optional().describe(`Max returned characters (default ${DEFAULT_TEXT_LIMIT})`),
   },
   async (params) => {
     try {
@@ -1088,7 +1244,12 @@ server.tool(
         sandbox.provider_sandbox_id,
         "ss -tnp 2>/dev/null || netstat -tnp 2>/dev/null || echo 'Network log not available'"
       ) as ExecResult;
-      return ok({ sandbox_id: sandbox.id, connections: (result.stdout || "").trim() });
+      const output = truncateOutput((result.stdout || "").trim(), params.max_output_chars ?? DEFAULT_TEXT_LIMIT);
+      return ok({
+        sandbox_id: sandbox.id,
+        connections: output.text,
+        connections_truncated: output.truncated,
+      });
     } catch (e) { return err(e); }
   },
 );
@@ -1102,22 +1263,29 @@ server.tool(
     path: z.string().describe("File path to watch"),
     offset: z.number().optional().describe("Line offset to read from (use next_offset from previous call)"),
     limit: z.number().optional().describe("Max lines to return (default: 100)"),
+    max_content_chars: z.number().optional().describe(`Max returned content characters (default ${DEFAULT_TEXT_LIMIT})`),
   },
   async (params) => {
     try {
       const sandbox = getSandbox(params.sandbox_id);
       if (!sandbox.provider_sandbox_id) throw new Error("Sandbox has no provider ID");
       const provider = await getProvider(sandbox.provider);
+      const limit = parseLimit(params.limit, 100);
+      const offset = parseNonNegativeInt(params.offset, 0);
       const content = await provider.readFile(sandbox.provider_sandbox_id, params.path, {
-        offset: params.offset,
-        limit: params.limit ?? 100,
+        offset,
+        limit,
       });
       const lines = content.split('\n');
+      const output = truncateOutput(content, params.max_content_chars ?? DEFAULT_TEXT_LIMIT);
       return ok({
         path: params.path,
-        content,
+        content: output.text,
+        content_truncated: output.truncated,
+        limit,
+        offset,
         lines_read: lines.length,
-        next_offset: (params.offset ?? 0) + lines.length,
+        next_offset: offset + lines.length,
       });
     } catch (e) { return err(e); }
   },
