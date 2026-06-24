@@ -31,6 +31,16 @@ import {
   finalizeSessionFailure,
 } from "../lib/runtime-state.js";
 import { getPackageVersion } from "../lib/version.js";
+import {
+  DEFAULT_LIST_LIMIT,
+  DEFAULT_LOG_LIMIT,
+  keySummary,
+  pageItems,
+  parseLimit,
+  parseNonNegativeInt,
+  shortId as compactShortId,
+  truncateText,
+} from "../lib/compact-output.js";
 import type { SandboxProviderName } from "../types/index.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -71,10 +81,6 @@ function statusColor(status: string): string {
   }
 }
 
-function shortId(id: string): string {
-  return id.slice(0, 8);
-}
-
 function handleError(err: unknown): never {
   if (err instanceof Error) {
     console.error(chalk.red(`Error: ${err.message}`));
@@ -82,6 +88,23 @@ function handleError(err: unknown): never {
     console.error(chalk.red("An unknown error occurred"));
   }
   process.exit(1);
+}
+
+function shortId(id: string): string {
+  return compactShortId(id);
+}
+
+function printPageHint(
+  page: { total: number; limit: number; cursor: number; next_cursor: number | null },
+  detailHint?: string
+): void {
+  const rangeStart = page.total === 0 ? 0 : page.cursor + 1;
+  const rangeEnd = page.cursor + page.limit > page.total ? page.total : page.cursor + page.limit;
+  console.log(chalk.dim(`Showing ${rangeStart}-${rangeEnd} of ${page.total}.`));
+  const hints = [];
+  if (page.next_cursor !== null) hints.push(`use --cursor ${page.next_cursor} for more`);
+  if (detailHint) hints.push(detailHint);
+  if (hints.length > 0) console.log(chalk.dim(`Hint: ${hints.join("; ")}.`));
 }
 
 function parseEnvVars(envArgs: string[]): Record<string, string> {
@@ -172,6 +195,9 @@ program
   .description("List sandboxes")
   .option("-s, --status <status>", "Filter by status")
   .option("-p, --provider <provider>", "Filter by provider")
+  .option("-l, --limit <n>", `Max rows to show (default ${DEFAULT_LIST_LIMIT}, max 200)`)
+  .option("--cursor <n>", "Row offset for pagination", "0")
+  .option("-v, --verbose", "Show extra columns")
   .option("--json", "Output as JSON")
   .action((opts) => {
     try {
@@ -181,7 +207,10 @@ program
       });
 
       if (opts.json) {
-        console.log(JSON.stringify(sandboxes, null, 2));
+        const output = opts.limit || opts.cursor !== "0"
+          ? pageItems(sandboxes, { limit: opts.limit, cursor: opts.cursor })
+          : sandboxes;
+        console.log(JSON.stringify(output, null, 2));
         return;
       }
 
@@ -190,17 +219,35 @@ program
         return;
       }
 
-      printTable(
-        ["ID", "NAME", "PROVIDER", "STATUS", "IMAGE", "CREATED"],
-        sandboxes.map((s) => [
-          shortId(s.id),
-          s.name || chalk.dim("—"),
-          s.provider,
-          statusColor(s.status),
-          s.image || chalk.dim("default"),
-          new Date(s.created_at).toLocaleString(),
-        ])
-      );
+      const page = pageItems(sandboxes, { limit: opts.limit, cursor: opts.cursor });
+      if (opts.verbose) {
+        printTable(
+          ["ID", "NAME", "PROVIDER", "STATUS", "PROVIDER ID", "IMAGE", "TIMEOUT", "CREATED"],
+          page.items.map((s) => [
+            s.id,
+            truncateText(s.name || "—", 32),
+            s.provider,
+            statusColor(s.status),
+            truncateText(s.provider_sandbox_id || "—", 24),
+            truncateText(s.image || "default", 48),
+            `${s.timeout}s`,
+            new Date(s.created_at).toLocaleString(),
+          ])
+        );
+      } else {
+        printTable(
+          ["ID", "NAME", "PROVIDER", "STATUS", "IMAGE", "CREATED"],
+          page.items.map((s) => [
+            shortId(s.id),
+            truncateText(s.name || "—", 24),
+            s.provider,
+            statusColor(s.status),
+            truncateText(s.image || "default", 32),
+            new Date(s.created_at).toLocaleDateString(),
+          ])
+        );
+      }
+      printPageHint(page, "use sandboxes show <id> or --verbose for details");
     } catch (err) {
       handleError(err);
     }
@@ -211,9 +258,16 @@ program
 program
   .command("show <id>")
   .description("Show sandbox details")
-  .action((id) => {
+  .option("-v, --verbose", "Show env var values and full config")
+  .option("--json", "Output full sandbox record as JSON")
+  .action((id, opts) => {
     try {
       const sandbox = getSandbox(id);
+
+      if (opts.json) {
+        console.log(JSON.stringify(sandbox, null, 2));
+        return;
+      }
 
       console.log(chalk.bold("Sandbox Details"));
       console.log(`  ${chalk.bold("ID:")}                ${sandbox.id}`);
@@ -227,14 +281,28 @@ program
       console.log(`  ${chalk.bold("Updated:")}           ${sandbox.updated_at}`);
 
       if (Object.keys(sandbox.env_vars).length > 0) {
-        console.log(`  ${chalk.bold("Env Vars:")}`);
-        for (const [k, v] of Object.entries(sandbox.env_vars)) {
-          console.log(`    ${k}=${v}`);
+        const summary = keySummary(sandbox.env_vars);
+        if (opts.verbose) {
+          console.log(`  ${chalk.bold("Env Vars:")}`);
+          for (const [k, v] of Object.entries(sandbox.env_vars)) {
+            console.log(`    ${k}=${truncateText(v, 160)}`);
+          }
+        } else {
+          console.log(`  ${chalk.bold("Env Vars:")}          ${summary.keys.join(", ")} (${summary.count}; values hidden)`);
         }
       }
 
       if (Object.keys(sandbox.config).length > 0) {
-        console.log(`  ${chalk.bold("Config:")}           ${JSON.stringify(sandbox.config)}`);
+        const summary = keySummary(sandbox.config as Record<string, unknown>);
+        if (opts.verbose) {
+          console.log(`  ${chalk.bold("Config:")}           ${truncateText(JSON.stringify(sandbox.config), 1000)}`);
+        } else {
+          console.log(`  ${chalk.bold("Config:")}           ${summary.keys.join(", ")} (${summary.count} keys)`);
+        }
+      }
+
+      if (!opts.verbose) {
+        console.log(chalk.dim("Hint: use --verbose for env values/full config, or --json for the complete record."));
       }
     } catch (err) {
       handleError(err);
@@ -369,11 +437,15 @@ program
   .description("Show event logs for a sandbox")
   .option("-f, --follow", "Follow log output")
   .option("-s, --session <session_id>", "Filter by session ID")
-  .option("-l, --limit <n>", "Max number of events", "50")
+  .option("-l, --limit <n>", `Max number of events (default ${DEFAULT_LOG_LIMIT}, max 200)`)
+  .option("--cursor <n>", "Event offset for pagination", "0")
+  .option("-v, --verbose", "Do not truncate event payloads")
+  .option("--json", "Output events as JSON")
   .action(async (id, opts) => {
     try {
       const sandbox = getSandbox(id);
-      const limit = parseInt(opts.limit, 10);
+      const limit = parseLimit(opts.limit, DEFAULT_LOG_LIMIT);
+      const cursor = parseNonNegativeInt(opts.cursor, 0);
 
       const printEvents = (events: ReturnType<typeof listEvents>) => {
         for (const event of events) {
@@ -384,7 +456,7 @@ program
               : event.type === "stdout"
                 ? chalk.green(event.type)
                 : chalk.blue(event.type);
-          const data = event.data || "";
+          const data = opts.verbose ? (event.data || "") : truncateText(event.data || "", 240);
           console.log(`${time} ${type} ${data}`);
         }
       };
@@ -393,12 +465,27 @@ program
         sandbox_id: sandbox.id,
         session_id: opts.session,
         limit,
+        offset: cursor,
       });
 
+      if (opts.json) {
+        console.log(JSON.stringify(events, null, 2));
+        return;
+      }
+
       printEvents(events);
+      if (!opts.follow) {
+        const nextCursor = cursor + events.length;
+        console.log(chalk.dim(`Showing ${events.length} event(s) from cursor ${cursor}.`));
+        if (events.length >= Number(limit)) {
+          console.log(chalk.dim(`Hint: use --cursor ${nextCursor} for more, or --verbose for untruncated payloads.`));
+        } else if (!opts.verbose) {
+          console.log(chalk.dim("Hint: use --verbose for untruncated payloads, or --json for complete event records."));
+        }
+      }
 
       if (opts.follow) {
-        let lastCount = events.length;
+        let lastCount = cursor + events.length;
         const poll = setInterval(() => {
           const newEvents = listEvents({
             sandbox_id: sandbox.id,
@@ -431,7 +518,11 @@ const filesCmd = program
 filesCmd
   .command("ls <id> <path>")
   .description("List files in a sandbox directory")
-  .action(async (id, path) => {
+  .option("-l, --limit <n>", `Max rows to show (default ${DEFAULT_LIST_LIMIT}, max 200)`)
+  .option("--cursor <n>", "Row offset for pagination", "0")
+  .option("-v, --verbose", "Show full paths")
+  .option("--json", "Output file list as JSON")
+  .action(async (id, path, opts) => {
     try {
       const sandbox = getSandbox(id);
       if (!sandbox.provider_sandbox_id) {
@@ -442,19 +533,30 @@ filesCmd
       const p = await getProvider(sandbox.provider);
       const files = await p.listFiles(sandbox.provider_sandbox_id, path);
 
+      if (opts.json) {
+        const output = opts.limit || opts.cursor !== "0"
+          ? pageItems(files, { limit: opts.limit, cursor: opts.cursor })
+          : files;
+        console.log(JSON.stringify(output, null, 2));
+        return;
+      }
+
       if (files.length === 0) {
         console.log(chalk.dim("No files found."));
         return;
       }
 
+      const page = pageItems(files, { limit: opts.limit, cursor: opts.cursor });
       printTable(
-        ["NAME", "TYPE", "SIZE"],
-        files.map((f) => [
-          f.is_dir ? chalk.blue(f.name + "/") : f.name,
+        opts.verbose ? ["NAME", "TYPE", "SIZE", "PATH"] : ["NAME", "TYPE", "SIZE"],
+        page.items.map((f) => [
+          f.is_dir ? chalk.blue(truncateText(f.name, 60) + "/") : truncateText(f.name, 60),
           f.is_dir ? "dir" : "file",
           f.is_dir ? chalk.dim("—") : `${f.size}`,
+          ...(opts.verbose ? [truncateText(f.path, 120)] : []),
         ])
       );
+      printPageHint(page, "use --verbose for full paths or --json for complete file records");
     } catch (err) {
       handleError(err);
     }
@@ -589,21 +691,29 @@ agentCmd
   .command("stream <id>")
   .description("Stream agent output from a sandbox")
   .option("-s, --session <session>", "Session ID")
-  .action(async (id: string, opts: { session?: string }) => {
+  .option("-l, --limit <n>", `Max events to replay (default ${DEFAULT_LOG_LIMIT}, max 200)`)
+  .option("--cursor <n>", "Event offset for pagination", "0")
+  .option("-v, --verbose", "Do not truncate replayed chunks")
+  .action(async (id: string, opts: { session?: string; limit?: string; cursor?: string; verbose?: boolean }) => {
     try {
       const sandbox = getSandbox(id);
+      const cursor = parseNonNegativeInt(opts.cursor, 0);
+      const limit = parseLimit(opts.limit, DEFAULT_LOG_LIMIT);
       const events = listEvents({
         sandbox_id: sandbox.id,
         session_id: opts.session,
+        limit,
+        offset: cursor,
       });
 
       for (const event of events) {
         if (event.type === "stdout" && event.data) {
-          process.stdout.write(event.data);
+          process.stdout.write(opts.verbose ? event.data : truncateText(event.data, 1000));
         } else if (event.type === "stderr" && event.data) {
-          process.stderr.write(event.data);
+          process.stderr.write(opts.verbose ? event.data : truncateText(event.data, 1000));
         }
       }
+      process.stderr.write(chalk.dim(`\nShowing ${events.length} event(s) from cursor ${cursor}. Use --cursor ${cursor + events.length} for more or --verbose for untruncated chunks.\n`));
     } catch (err) {
       handleError(err);
     }
@@ -668,24 +778,38 @@ program
 program
   .command("agents")
   .description("List registered agents")
-  .action(() => {
+  .option("-l, --limit <n>", `Max rows to show (default ${DEFAULT_LIST_LIMIT}, max 200)`)
+  .option("--cursor <n>", "Row offset for pagination", "0")
+  .option("-v, --verbose", "Show full descriptions")
+  .option("--json", "Output as JSON")
+  .action((opts) => {
     try {
       const agents = listAgents();
+
+      if (opts.json) {
+        const output = opts.limit || opts.cursor !== "0"
+          ? pageItems(agents, { limit: opts.limit, cursor: opts.cursor })
+          : agents;
+        console.log(JSON.stringify(output, null, 2));
+        return;
+      }
 
       if (agents.length === 0) {
         console.log(chalk.dim("No agents registered."));
         return;
       }
 
+      const page = pageItems(agents, { limit: opts.limit, cursor: opts.cursor });
       printTable(
         ["ID", "NAME", "DESCRIPTION", "LAST SEEN"],
-        agents.map((a) => [
+        page.items.map((a) => [
           shortId(a.id),
-          a.name,
-          a.description || chalk.dim("—"),
+          truncateText(a.name, 32),
+          opts.verbose ? (a.description || chalk.dim("—")) : truncateText(a.description || "—", 80),
           new Date(a.last_seen_at).toLocaleString(),
         ])
       );
+      printPageHint(page, "use --verbose for full descriptions or --json for complete agent records");
     } catch (err) {
       handleError(err);
     }

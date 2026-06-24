@@ -17,6 +17,16 @@ npm install -g @hasna/sandboxes
 sandboxes --help
 ```
 
+CLI output is compact by default for agent-friendly terminals:
+
+- `sandboxes list`, `sandboxes agents`, `sandboxes logs`, `sandboxes files ls`, and `sandboxes agent stream` cap default rows/events and print pagination hints.
+- Use `--limit <n>` and `--cursor <n>` to page through larger result sets.
+- Use `--verbose` for wider human tables or untruncated text.
+- Use `show <id>` for focused sandbox details.
+- Use `--json` for complete machine-readable CLI output where supported. When
+  combined with `--limit` or `--cursor`, JSON list commands return a paged
+  object with `items`, `total`, and `next_cursor`.
+
 ## SDK One-shot Commands
 
 Use the SDK to create a sandbox, upload a local project, run a command, and clean up:
@@ -49,6 +59,11 @@ sandboxes-mcp
 ```
 
 41 tools available.
+
+MCP list/log/status tools also use compact defaults. Pass `limit`, `cursor`, and
+`verbose:true` for progressive disclosure. Large text fields such as command
+output, file content, logs, process commands, and network logs are truncated by
+default and include `*_truncated` flags or hints when more detail is available.
 
 ## HTTP mode
 
