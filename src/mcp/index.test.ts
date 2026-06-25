@@ -4,6 +4,7 @@ import { createSandbox } from "../db/sandboxes.js";
 import { registerAgent, listAgents } from "../db/agents.js";
 import { ensureProject, listProjects } from "../db/projects.js";
 import { listEvents, addEvent } from "../db/events.js";
+import { buildServer } from "./server.js";
 
 beforeEach(() => {
   process.env["SANDBOXES_DB_PATH"] = ":memory:";
@@ -48,5 +49,15 @@ describe("MCP tool logic (unit)", () => {
     expect(events.length).toBe(2);
     expect(events[0]!.type).toBe("stdout");
     expect(events[0]!.data).toBe("hello");
+  });
+
+  it("registers storage sync tools without legacy cloud tool names", () => {
+    const server = buildServer();
+    const toolNames = Object.keys((server as any)._registeredTools ?? {});
+
+    expect(toolNames).toContain("sandboxes_storage_status");
+    expect(toolNames).toContain("sandboxes_storage_push");
+    expect(toolNames).toContain("sandboxes_feedback");
+    expect(toolNames).not.toContain("sandboxes_cloud_status");
   });
 });

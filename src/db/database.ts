@@ -1,4 +1,3 @@
-import { SqliteAdapter } from "@hasna/cloud";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, cpSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -20,7 +19,7 @@ function findNearestDb(startDir: string): string | null {
   return null;
 }
 
-function getDbPath(): string {
+export function getDbPath(): string {
   // Support env var overrides
   const envPath = process.env["HASNA_SANDBOXES_DB_PATH"] ?? process.env["SANDBOXES_DB_PATH"];
   if (envPath) return envPath;
@@ -215,9 +214,21 @@ INSERT OR IGNORE INTO _migrations (id) VALUES (6);
 ALTER TABLE agents ADD COLUMN active_project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
 INSERT OR IGNORE INTO _migrations (id) VALUES (7);
   `,
+
+  // Migration 8: Composite indexes for common filtered list queries
+  `
+CREATE INDEX IF NOT EXISTS idx_sandboxes_status_created ON sandboxes(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sandboxes_provider_created ON sandboxes(provider, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sandboxes_project_created ON sandboxes(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_sandbox_started ON sandbox_sessions(sandbox_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_status_started ON sandbox_sessions(status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_sandbox_status_started ON sandbox_sessions(sandbox_id, status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_sandbox_created ON sandbox_events(sandbox_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_events_session_created ON sandbox_events(session_id, created_at ASC);
+INSERT OR IGNORE INTO _migrations (id) VALUES (8);
+  `,
 ];
 
-let _adapter: SqliteAdapter | null = null;
 let db: Database | null = null;
 
 function runMigrations(database: Database): void {
@@ -244,8 +255,7 @@ export function getDatabase(): Database {
   const dbPath = getDbPath();
   ensureDir(dbPath);
 
-  _adapter = new SqliteAdapter(dbPath);
-  db = _adapter.raw;
+  db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
 
@@ -257,7 +267,6 @@ export function closeDatabase(): void {
   if (db) {
     db.close();
     db = null;
-    _adapter = null;
   }
 }
 
@@ -265,7 +274,6 @@ export function resetDatabase(): void {
   if (db) {
     db.close();
     db = null;
-    _adapter = null;
   }
 }
 
@@ -281,21 +289,35 @@ export function now(): string {
   return new Date().toISOString().replace("T", " ").replace("Z", "");
 }
 
+const PARTIAL_ID_TABLES = new Set([
+  "agents",
+  "projects",
+  "sandbox_sessions",
+  "sandboxes",
+  "snapshots",
+  "templates",
+  "webhooks",
+]);
+
 export function resolvePartialId(
   table: string,
   partialId: string
 ): string | null {
+  if (!PARTIAL_ID_TABLES.has(table)) {
+    throw new Error(`Invalid partial-id table: ${table}`);
+  }
+
   const database = getDatabase();
+  const exact = database
+    .query(`SELECT id FROM ${table} WHERE id = ?`)
+    .get(partialId) as { id: string } | null;
+  if (exact) return exact.id;
+
   const rows = database
-    .query(`SELECT id FROM ${table} WHERE id LIKE ? || '%'`)
-    .all(partialId) as { id: string }[];
+    .query(`SELECT id FROM ${table} WHERE id LIKE ? ORDER BY id LIMIT 2`)
+    .all(`${partialId}%`) as { id: string }[];
 
   if (rows.length === 1) return rows[0]!.id;
-  if (rows.length === 0) return null;
-
-  // Exact match takes priority
-  const exact = rows.find((r) => r.id === partialId);
-  if (exact) return exact.id;
 
   return null; // Ambiguous
 }

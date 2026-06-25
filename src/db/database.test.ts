@@ -62,7 +62,7 @@ describe("migrations", () => {
     const rows = db.query("SELECT id FROM _migrations ORDER BY id").all() as {
       id: number;
     }[];
-    expect(rows.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(rows.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it("is idempotent when called multiple times", () => {
@@ -154,5 +154,11 @@ describe("resolvePartialId", () => {
 
     const resolved = resolvePartialId("agents", "aaaa");
     expect(resolved).toBe("aaaa");
+  });
+
+  it("rejects unknown table names", () => {
+    expect(() => resolvePartialId("agents WHERE 1=1", "aaaa")).toThrow(
+      /Invalid partial-id table/
+    );
   });
 });

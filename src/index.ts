@@ -3,6 +3,37 @@ export * from "./types/index.js";
 
 // Database
 export { getDatabase, closeDatabase, resetDatabase, uuid, shortId, now, resolvePartialId } from "./db/database.js";
+export {
+  SANDBOXES_STORAGE_ENV,
+  SANDBOXES_STORAGE_FALLBACK_ENV,
+  SANDBOXES_STORAGE_MODE_ENV,
+  SANDBOXES_STORAGE_MODE_FALLBACK_ENV,
+  STORAGE_DATABASE_ENV,
+  STORAGE_MODE_ENV,
+  getConnectionString,
+  getStorageConfig,
+  getStorageConnectionString,
+  getStorageDatabaseEnv,
+  getStorageDatabaseEnvName,
+  getStorageDatabaseUrl,
+  type StorageConfig,
+  type StorageEnv,
+  type StorageMode,
+} from "./db/storage-config.js";
+export { PgAdapterAsync } from "./db/remote-storage.js";
+export { applyPgMigrations } from "./db/pg-migrate.js";
+export {
+  SANDBOXES_STORAGE_TABLES,
+  STORAGE_TABLES,
+  getStoragePg,
+  getStorageStatus,
+  parseStorageTables,
+  pullStorageChanges,
+  pushStorageChanges,
+  runStorageMigrations,
+  syncStorageChanges,
+} from "./db/storage-sync.js";
+export type { StorageStatus, SyncResult } from "./db/storage-sync.js";
 export { createSandbox, getSandbox, listSandboxes, updateSandbox, deleteSandbox } from "./db/sandboxes.js";
 export { createSession, getSession, listSessions, updateSession, endSession } from "./db/sessions.js";
 export { addEvent, listEvents } from "./db/events.js";

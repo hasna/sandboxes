@@ -1,5 +1,4 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerCloudTools } from "@hasna/cloud";
 import { z } from "zod";
 
 import { getDatabase } from "../db/database.js";
@@ -31,6 +30,7 @@ import {
 import { resolveImage, getBuiltinImageSetupScript, BUILTIN_IMAGES } from "../lib/images.js";
 import { getPackageVersion } from "../lib/version.js";
 import type { ExecResult, AgentType } from "../types/index.js";
+import { registerSandboxesStorageTools } from "./storage-tools.js";
 
 // ── Cost constants ────────────────────────────────────────────────────
 const E2B_COST_PER_SECOND = 0.000014;
@@ -1148,6 +1148,6 @@ server.tool(
   },
 );
 
-  registerCloudTools(server, "sandboxes");
+  registerSandboxesStorageTools(server);
   return server;
 }

@@ -457,7 +457,7 @@ describe("SandboxesSDK", () => {
       agentType: "custom",
       prompt: "noop",
       command: "echo hi",
-      secrets: [{ env: "ANTHROPIC_API_KEY", key: "hasnaxyz/anthropic/live/api_key" }],
+      secrets: [{ env: "ANTHROPIC_API_KEY", key: "example/anthropic/test/api_key" }],
       secretResolver: async (key) => `resolved:${key}`,
     });
     await sdk.waitForSession(agent.id);
@@ -465,7 +465,7 @@ describe("SandboxesSDK", () => {
     // Injected into the per-call exec env...
     expect(provider.execCalls.at(-1)?.opts?.env).toEqual({
       BASE: "sandbox",
-      ANTHROPIC_API_KEY: "resolved:hasnaxyz/anthropic/live/api_key",
+      ANTHROPIC_API_KEY: "resolved:example/anthropic/test/api_key",
     });
     // ...but never written to the persisted sandbox record.
     expect(sdk.getSandbox(sandbox.id).env_vars).toEqual({ BASE: "sandbox" });

@@ -8,9 +8,9 @@ import {
 
 describe("parseSecretMapping", () => {
   it("parses ENV_NAME=vault/key", () => {
-    expect(parseSecretMapping("ANTHROPIC_API_KEY=hasnaxyz/anthropic/live/api_key")).toEqual({
+    expect(parseSecretMapping("ANTHROPIC_API_KEY=example/anthropic/test/api_key")).toEqual({
       env: "ANTHROPIC_API_KEY",
-      key: "hasnaxyz/anthropic/live/api_key",
+      key: "example/anthropic/test/api_key",
     });
   });
 
@@ -35,19 +35,19 @@ describe("resolveSecretEnv", () => {
 
     const env = await resolveSecretEnv(
       [
-        { env: "ANTHROPIC_API_KEY", key: "hasnaxyz/anthropic/live/api_key" },
-        { env: "OPENAI_API_KEY", key: "hasnaxyz/openai/live/api_key" },
+        { env: "ANTHROPIC_API_KEY", key: "example/anthropic/test/api_key" },
+        { env: "OPENAI_API_KEY", key: "example/openai/test/api_key" },
       ],
       resolver
     );
 
     expect(env).toEqual({
-      ANTHROPIC_API_KEY: "value-of-hasnaxyz/anthropic/live/api_key",
-      OPENAI_API_KEY: "value-of-hasnaxyz/openai/live/api_key",
+      ANTHROPIC_API_KEY: "value-of-example/anthropic/test/api_key",
+      OPENAI_API_KEY: "value-of-example/openai/test/api_key",
     });
     expect(seen).toEqual([
-      "hasnaxyz/anthropic/live/api_key",
-      "hasnaxyz/openai/live/api_key",
+      "example/anthropic/test/api_key",
+      "example/openai/test/api_key",
     ]);
   });
 

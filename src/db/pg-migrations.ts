@@ -1,5 +1,5 @@
 /**
- * PostgreSQL migrations for open-sandboxes cloud sync.
+ * PostgreSQL migrations for open-sandboxes storage sync.
  *
  * Equivalent to the SQLite schema in database.ts, translated for PostgreSQL.
  */
@@ -47,6 +47,9 @@ export const PG_MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_sandboxes_status ON sandboxes(status)`,
   `CREATE INDEX IF NOT EXISTS idx_sandboxes_provider ON sandboxes(provider)`,
   `CREATE INDEX IF NOT EXISTS idx_sandboxes_project ON sandboxes(project_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sandboxes_status_created ON sandboxes(status, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_sandboxes_provider_created ON sandboxes(provider, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_sandboxes_project_created ON sandboxes(project_id, created_at DESC)`,
 
   // Migration 4: sandbox_sessions
   `CREATE TABLE IF NOT EXISTS sandbox_sessions (
@@ -63,6 +66,9 @@ export const PG_MIGRATIONS: string[] = [
 
   `CREATE INDEX IF NOT EXISTS idx_sessions_sandbox ON sandbox_sessions(sandbox_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sessions_status ON sandbox_sessions(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_sandbox_started ON sandbox_sessions(sandbox_id, started_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_status_started ON sandbox_sessions(status, started_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_sandbox_status_started ON sandbox_sessions(sandbox_id, status, started_at DESC)`,
 
   // Migration 5: sandbox_events
   `CREATE TABLE IF NOT EXISTS sandbox_events (
@@ -77,6 +83,8 @@ export const PG_MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_events_sandbox ON sandbox_events(sandbox_id)`,
   `CREATE INDEX IF NOT EXISTS idx_events_session ON sandbox_events(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_events_type ON sandbox_events(type)`,
+  `CREATE INDEX IF NOT EXISTS idx_events_sandbox_created ON sandbox_events(sandbox_id, created_at ASC)`,
+  `CREATE INDEX IF NOT EXISTS idx_events_session_created ON sandbox_events(session_id, created_at ASC)`,
 
   // Migration 6: webhooks
   `CREATE TABLE IF NOT EXISTS webhooks (

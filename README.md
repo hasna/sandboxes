@@ -73,15 +73,20 @@ Browser CORS is disabled by default. Set
 `HASNA_SANDBOXES_SERVE_ALLOWED_ORIGINS` to a comma-separated list of exact
 origins when a browser client must call the local server.
 
-## Cloud Sync
+## Storage Sync
 
-This package supports cloud sync via `@hasna/cloud`:
+Remote storage sync is optional. By default sandboxes use local SQLite at `~/.hasna/sandboxes/`.
 
 ```bash
-cloud setup
-cloud sync push --service sandboxes
-cloud sync pull --service sandboxes
+sandboxes storage status
+sandboxes storage push
+sandboxes storage pull
+sandboxes storage sync
 ```
+
+Set `HASNA_SANDBOXES_DATABASE_URL` or configure
+`~/.hasna/sandboxes/storage/config.json` to run in hybrid/remote mode with
+PostgreSQL.
 
 ## Data Directory
 

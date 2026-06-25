@@ -66,7 +66,7 @@ export function listEvents(opts?: {
   const offset = opts?.offset ?? 0;
 
   const rows = db
-    .query(`SELECT * FROM sandbox_events${where} ORDER BY created_at ASC LIMIT ? OFFSET ?`)
+    .query(`SELECT * FROM sandbox_events${where} ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?`)
     .all(...([...params, limit, offset] as (string | number)[])) as SandboxEventRow[];
 
   return rows.map(rowToEvent);

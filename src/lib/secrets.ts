@@ -8,7 +8,7 @@ export type SecretResolver = (key: string) => Promise<string>;
 export interface SecretMapping {
   /** Environment variable name to expose inside the sandbox (e.g. ANTHROPIC_API_KEY). */
   env: string;
-  /** Vault key to read (e.g. hasnaxyz/anthropic/live/api_key). */
+  /** Vault key to read (e.g. example/anthropic/test/api_key). */
   key: string;
 }
 
