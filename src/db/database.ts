@@ -8,11 +8,18 @@ function isInMemoryDb(path: string): boolean {
   return path === ":memory:" || path.startsWith("file::memory:");
 }
 
+function homeDir(): string {
+  return process.env["HOME"] || process.env["USERPROFILE"] || "~";
+}
+
 function findNearestDb(startDir: string): string | null {
   let dir = resolve(startDir);
+  const home = resolve(homeDir());
   while (true) {
-    const candidate = join(dir, ".sandboxes", "sandboxes.db");
-    if (existsSync(candidate)) return candidate;
+    if (dir !== home) {
+      const candidate = join(dir, ".sandboxes", "sandboxes.db");
+      if (existsSync(candidate)) return candidate;
+    }
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -31,7 +38,7 @@ function getDbPath(): string {
   if (nearest) return nearest;
 
   // Global: ~/.hasna/sandboxes/ (with backward compat from ~/.sandboxes/)
-  const home = process.env["HOME"] || process.env["USERPROFILE"] || "~";
+  const home = homeDir();
   const newDir = join(home, ".hasna", "sandboxes");
   const oldDir = join(home, ".sandboxes");
 

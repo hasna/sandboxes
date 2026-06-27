@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   resetDatabase,
   getDatabase,
@@ -31,6 +34,41 @@ describe("getDatabase", () => {
     const db1 = getDatabase();
     const db2 = getDatabase();
     expect(db1).toBe(db2);
+  });
+
+  it("migrates legacy global database into ~/.hasna/sandboxes", () => {
+    closeDatabase();
+    resetDatabase();
+    delete process.env["SANDBOXES_DB_PATH"];
+    const originalHome = process.env["HOME"];
+    const originalUserProfile = process.env["USERPROFILE"];
+    const originalCwd = process.cwd();
+    const home = mkdtempSync(join(tmpdir(), "sandboxes-home-"));
+    try {
+      process.env["HOME"] = home;
+      delete process.env["USERPROFILE"];
+      const workDir = join(home, "work");
+      const legacyDir = join(home, ".sandboxes");
+      const canonicalDb = join(home, ".hasna", "sandboxes", "sandboxes.db");
+      mkdirSync(workDir, { recursive: true });
+      mkdirSync(legacyDir, { recursive: true });
+      writeFileSync(join(legacyDir, "sandboxes.db"), "");
+      process.chdir(workDir);
+
+      const db = getDatabase();
+      expect(db).toBeInstanceOf(Database);
+      closeDatabase();
+
+      expect(existsSync(canonicalDb)).toBe(true);
+    } finally {
+      process.chdir(originalCwd);
+      closeDatabase();
+      if (originalHome === undefined) delete process.env["HOME"];
+      else process.env["HOME"] = originalHome;
+      if (originalUserProfile === undefined) delete process.env["USERPROFILE"];
+      else process.env["USERPROFILE"] = originalUserProfile;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 

@@ -36,7 +36,7 @@ src/
     projects.ts       Project registry
     webhooks.ts       Webhook CRUD
   lib/
-    config.ts         Config file management (~/.sandboxes/config.json)
+    config.ts         Config file management (~/.hasna/sandboxes/config.json)
     stream.ts         Real-time output streaming + lifecycle events
   types/index.ts      All TypeScript types and error classes
   index.ts            Library entrypoint (public API re-exports)
@@ -53,7 +53,7 @@ src/
 - **Database rows vs domain types**: `*Row` types use raw SQLite types (strings for JSON, numbers for booleans). Domain types use parsed values. Conversion happens in the `db/` layer.
 - **Error handling**: Custom error classes in `types/index.ts` (`SandboxNotFoundError`, `ProviderError`, etc.).
 - **CLI**: Built with Commander for argument parsing. Uses Ink (React) for rich terminal output and chalk for colors.
-- **Config**: Stored at `~/.sandboxes/config.json`. Keys: `default_provider`, `default_image`, `default_timeout`, `providers.<name>.api_key`.
+- **Config**: Stored at `~/.hasna/sandboxes/config.json`. Legacy `~/.sandboxes` state is copied into the canonical directory when needed. Keys: `default_provider`, `default_image`, `default_timeout`, `providers.<name>.api_key`.
 
 ## Test Pattern
 

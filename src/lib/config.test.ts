@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, unlinkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, saveConfig, getDefaultProvider, getProviderApiKey, setConfigValue, getConfigValue } from "./config.js";
 
@@ -18,6 +18,7 @@ afterEach(() => {
       unlinkSync("/tmp/test-sandboxes-home/.hasna/sandboxes/config.json");
     }
   } catch { /* ignore */ }
+  rmSync("/tmp/test-sandboxes-home/.sandboxes", { recursive: true, force: true });
   delete process.env["E2B_API_KEY"];
   delete process.env["DAYTONA_API_KEY"];
   delete process.env["KERNEL_API_KEY"];
@@ -34,6 +35,22 @@ describe("config", () => {
     const config = loadConfig();
     expect(config.default_provider).toBe("daytona");
     expect(config.default_timeout).toBe(7200);
+  });
+
+  it("migrates legacy config from ~/.sandboxes into ~/.hasna/sandboxes", () => {
+    rmSync("/tmp/test-sandboxes-home/.hasna/sandboxes", { recursive: true, force: true });
+    const legacyDir = "/tmp/test-sandboxes-home/.sandboxes";
+    const canonicalPath = "/tmp/test-sandboxes-home/.hasna/sandboxes/config.json";
+    mkdirSync(legacyDir, { recursive: true });
+    writeFileSync(
+      join(legacyDir, "config.json"),
+      JSON.stringify({ default_provider: "modal" }) + "\n",
+    );
+
+    const config = loadConfig();
+
+    expect(config.default_provider).toBe("modal");
+    expect(readFileSync(canonicalPath, "utf-8")).toContain("modal");
   });
 
   it("getDefaultProvider returns e2b when not set", () => {
