@@ -42,6 +42,52 @@ Set `E2B_API_KEY` for E2B-backed runs. `syncStrategy: "rsync"` mirrors the local
 
 Use `provider: "kernel"` with `KERNEL_API_KEY` for Kernel browser sandboxes. Kernel runs command and file operations inside a browser session VM; container images, pause/resume, and public port forwarding are not supported by that provider.
 
+## Automation Action Sandbox Profiles
+
+OpenAutomations can reference sandbox requirements through `@hasna/actions`
+metadata, but Sandboxes owns provider-specific execution isolation. The action
+manifest should declare the minimum profile it needs instead of hardcoding a
+provider token or broad machine access:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "id": "repo.tests.run",
+  "name": "Run repository tests",
+  "version": "1.0.0",
+  "bindings": [
+    {
+      "kind": "sdk",
+      "package": "@hasna/sandboxes",
+      "export": "createSandboxesSDK"
+    }
+  ],
+  "sandbox": {
+    "profile": "automation.command.readonly",
+    "filesystem": "readonly",
+    "network": "deny",
+    "commands": "allowlisted",
+    "allowlist": ["bun test"]
+  }
+}
+```
+
+Profile expectations:
+
+- `automation.command.readonly`: read-only workspace, no network, explicit
+  command allowlist
+- `automation.command.workspace-write`: bounded write scopes, no ambient home
+  directory writes, explicit command allowlist
+- `automation.browser`: browser/Kernel-style execution with network limited to
+  declared hosts
+- `automation.provider`: cloud provider sandbox with explicit image, timeout,
+  upload scope, cleanup behavior, and secret reference list
+
+OpenAutomations owns queue leases, approvals, and replay. Sandboxes owns
+provider selection, filesystem/network/command enforcement, cleanup, and
+execution evidence. Action queues should contain the profile name and requested
+policy, not raw provider credentials or unbounded shell access.
+
 ## MCP Server
 
 ```bash
