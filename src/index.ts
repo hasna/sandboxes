@@ -2,7 +2,7 @@
 export * from "./types/index.js";
 
 // Database
-export { getDatabase, closeDatabase, resetDatabase, uuid, shortId, now, resolvePartialId } from "./db/database.js";
+export { getDatabase, getDbPath, closeDatabase, resetDatabase, uuid, shortId, now, resolvePartialId } from "./db/database.js";
 export { createSandbox, getSandbox, listSandboxes, updateSandbox, deleteSandbox } from "./db/sandboxes.js";
 export { createSession, getSession, listSessions, updateSession, endSession } from "./db/sessions.js";
 export { addEvent, listEvents } from "./db/events.js";

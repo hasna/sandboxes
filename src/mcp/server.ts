@@ -1,5 +1,4 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerCloudTools } from "@hasna/cloud";
 import { z } from "zod";
 
 import { getDatabase } from "../db/database.js";
@@ -31,6 +30,7 @@ import {
 import { resolveImage, getBuiltinImageSetupScript, BUILTIN_IMAGES } from "../lib/images.js";
 import { getPackageVersion } from "../lib/version.js";
 import type { ExecResult, AgentType, SandboxProviderName } from "../types/index.js";
+import { registerSandboxesStorageTools } from "./storage-tools.js";
 
 // ── Cost constants ────────────────────────────────────────────────────
 const E2B_COST_PER_SECOND = 0.000014;
@@ -82,6 +82,7 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "list_files", description: "List files in a sandbox directory" },
   { name: "upload_dir", description: "Upload a local directory into a sandbox (fast archive, no git clone)" },
   { name: "get_session", description: "Get session details and exit code (useful for background commands)" },
+  { name: "bg_wait_session", description: "Wait for a background command session to complete" },
   { name: "get_logs", description: "Get sandbox/session event logs" },
   { name: "register_agent", description: "Register an agent (idempotent, auto-heartbeat)" },
   { name: "list_agents", description: "List all registered agents" },
@@ -91,6 +92,9 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "list_projects", description: "List all projects" },
   { name: "describe_tools", description: "List all available tools" },
   { name: "search_tools", description: "Search tools by keyword" },
+  { name: "run_agent", description: "Run an AI agent inside a sandbox" },
+  { name: "stop_agent", description: "Stop a running agent in a sandbox" },
+  { name: "get_agent_output", description: "Get output from an agent session" },
   { name: "pause_sandbox", description: "Pause a running sandbox, saving its state for later resume" },
   { name: "resume_sandbox", description: "Resume a paused sandbox" },
   { name: "create_template", description: "Create a reusable sandbox template" },
@@ -107,6 +111,12 @@ const TOOL_CATALOG: { name: string; description: string }[] = [
   { name: "get_network_log", description: "Get outbound network connections from a sandbox" },
   { name: "watch_file", description: "Get new content from a file since a previous read (tail -f equivalent)" },
   { name: "list_images", description: "List available pre-warmed sandbox image aliases" },
+  { name: "send_feedback", description: "Send feedback about this service" },
+  { name: "sandboxes_storage_status", description: "Show sandboxes local database and optional remote storage health" },
+  { name: "sandboxes_storage_push", description: "Push local sandboxes data to PostgreSQL" },
+  { name: "sandboxes_storage_pull", description: "Pull PostgreSQL sandboxes data into the local database" },
+  { name: "sandboxes_storage_sync", description: "Push local changes, then pull remote changes" },
+  { name: "sandboxes_feedback", description: "Save feedback for sandboxes" },
 ];
 
 export const MCP_NAME = "sandboxes";
@@ -1153,6 +1163,6 @@ server.tool(
   },
 );
 
-  registerCloudTools(server, "sandboxes");
+  registerSandboxesStorageTools(server);
   return server;
 }

@@ -1,4 +1,3 @@
-import { SqliteAdapter } from "@hasna/cloud";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, cpSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -27,7 +26,7 @@ function findNearestDb(startDir: string): string | null {
   return null;
 }
 
-function getDbPath(): string {
+export function getDbPath(): string {
   // Support env var overrides
   const envPath = process.env["HASNA_SANDBOXES_DB_PATH"] ?? process.env["SANDBOXES_DB_PATH"];
   if (envPath) return envPath;
@@ -296,7 +295,6 @@ INSERT OR IGNORE INTO _migrations (id) VALUES (8);
   `,
 ];
 
-let _adapter: SqliteAdapter | null = null;
 let db: Database | null = null;
 
 function runMigrations(database: Database): void {
@@ -323,8 +321,7 @@ export function getDatabase(): Database {
   const dbPath = getDbPath();
   ensureDir(dbPath);
 
-  _adapter = new SqliteAdapter(dbPath);
-  db = _adapter.raw;
+  db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
 
@@ -336,7 +333,6 @@ export function closeDatabase(): void {
   if (db) {
     db.close();
     db = null;
-    _adapter = null;
   }
 }
 
@@ -344,7 +340,6 @@ export function resetDatabase(): void {
   if (db) {
     db.close();
     db = null;
-    _adapter = null;
   }
 }
 

@@ -94,7 +94,7 @@ policy, not raw provider credentials or unbounded shell access.
 sandboxes-mcp
 ```
 
-41 tools available.
+47 tools available.
 
 ## HTTP mode
 
@@ -113,15 +113,20 @@ MCP_HTTP=1 sandboxes-mcp
 sandboxes-serve
 ```
 
-## Cloud Sync
+## Storage Sync
 
-This package supports cloud sync via `@hasna/cloud`:
+Sandboxes owns its local database and optional PostgreSQL sync path directly.
+Set `HASNA_SANDBOXES_DATABASE_URL` or `SANDBOXES_DATABASE_URL`, then use:
 
 ```bash
-cloud setup
-cloud sync push --service sandboxes
-cloud sync pull --service sandboxes
+sandboxes storage status
+sandboxes storage status --check
+sandboxes storage push
+sandboxes storage pull
+sandboxes storage sync
 ```
+
+The SDK storage helpers are exported from `@hasna/sandboxes/storage`.
 
 ## Data Directory
 

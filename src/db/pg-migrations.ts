@@ -1,5 +1,5 @@
 /**
- * PostgreSQL migrations for open-sandboxes cloud sync.
+ * PostgreSQL migrations for open-sandboxes storage sync.
  *
  * Equivalent to the SQLite schema in database.ts, translated for PostgreSQL.
  */

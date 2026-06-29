@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { registerEventsCommands } from "@hasna/events/commander";
 import chalk from "chalk";
+import { registerStorageCommands } from "./storage.js";
 
 import {
   createSandbox,
@@ -104,6 +105,7 @@ const program = new Command()
   .description("Universal cloud sandbox manager for AI coding agents")
   .version(getPackageVersion());
 
+registerStorageCommands(program);
 registerEventsCommands(program, { source: "sandboxes" });
 
 // ── create ───────────────────────────────────────────────────────────
