@@ -1,6 +1,6 @@
 {
   "name": "@hasna/sandboxes",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "author": "Andrei Hasna <andrei@hasna.com>",
   "repository": {
     "type": "git",
@@ -74,7 +74,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/cli/index.tsx --outdir dist/cli --target bun --external ink --external react --external chalk --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && bun build src/mcp/index.ts --outdir dist/mcp --target bun --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && bun build src/server/index.ts --outdir dist/server --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && bun build src/index.ts src/storage.ts --outdir dist --target bun --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && tsc --emitDeclarationOnly --outDir dist",
+    "build": "rm -rf dist && bun build src/cli/index.tsx --outdir dist/cli --target bun --external ink --external react --external chalk --external pg --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && bun build src/mcp/index.ts --outdir dist/mcp --target bun --external pg --external @modelcontextprotocol/sdk --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && bun build src/server/index.ts --outdir dist/server --target bun --external pg --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && bun build src/index.ts src/storage.ts --outdir dist --target bun --external pg --external @e2b/code-interpreter --external @daytonaio/sdk --external @onkernel/sdk --external modal && tsc --emitDeclarationOnly --outDir dist",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "verify:release": "bun run scripts/release-guard.ts",

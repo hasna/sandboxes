@@ -30,5 +30,5 @@ export {
   syncStorageChanges,
 } from "./db/storage-sync.js";
 export type { StorageStatus, SyncResult } from "./db/storage-sync.js";
-export { PgAdapterAsync } from "./db/remote-storage.js";
+export { PgAdapterAsync, buildPgPoolConfig, isLocalPostgresHost } from "./db/remote-storage.js";
 export { PG_MIGRATIONS } from "./db/pg-migrations.js";
