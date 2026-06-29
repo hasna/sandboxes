@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { resetDatabase, getDatabase, closeDatabase } from "../db/database.js";
 import { createSandbox } from "../db/sandboxes.js";
 import { registerAgent } from "../db/agents.js";
@@ -77,5 +78,29 @@ describe("HTTP server route logic (unit)", () => {
 
     expect(response.status).toBe(201);
     expect(payload.description).toBe("route-level description");
+  });
+
+  it("server CLI prints version without starting the server", () => {
+    const result = spawnSync("bun", ["src/server/index.ts", "--version"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, SANDBOXES_DB_PATH: ":memory:" },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout.trim()).toBe(getPackageVersion());
+  });
+
+  it("server CLI prints help without starting the server", () => {
+    const result = spawnSync("bun", ["src/server/index.ts", "--help"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, SANDBOXES_DB_PATH: ":memory:" },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Usage: sandboxes-serve [options]");
   });
 });
